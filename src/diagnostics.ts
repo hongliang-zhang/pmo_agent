@@ -14,7 +14,7 @@ export async function runDiagnostics(config: AppConfig): Promise<DiagnosticCheck
   const checks: DiagnosticCheck[] = []
   checks.push(await checkGitLab(config))
   checks.push(await checkFeishuProject(config))
-  checks.push(await checkLarkMcp())
+    checks.push(await checkLarkMcp())
   return checks
 }
 
@@ -57,7 +57,7 @@ async function checkFeishuProject(config: AppConfig): Promise<DiagnosticCheck> {
   }
 }
 
-async function checkLarkMcp(): Promise<DiagnosticCheck> {
+export async function checkLarkMcp(): Promise<DiagnosticCheck> {
   try {
     const output = await runCommand('npx', ['-y', '@larksuiteoapi/lark-mcp', 'whoami'], 30_000)
     const session = parseLarkWhoami(output.stdout + output.stderr)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseLarkWhoami, renderDiagnostics } from '../src/diagnostics.js'
+import { checkLarkMcp, parseLarkWhoami, renderDiagnostics } from '../src/diagnostics.js'
 
 describe('diagnostics', () => {
   it('detects missing lark-mcp login sessions', () => {
@@ -35,5 +35,9 @@ describe('diagnostics', () => {
     expect(text).toContain('[WARN] lark-mcp')
     expect(text).toContain('Next: Add docs:doc.')
     expect(text).toContain('Summary: 1 passed, 1 warnings, 0 failed.')
+  })
+
+  it('exports lark-mcp checks for preflight gating', () => {
+    expect(typeof checkLarkMcp).toBe('function')
   })
 })

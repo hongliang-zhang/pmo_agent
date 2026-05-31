@@ -9,11 +9,15 @@ import { collectGitLabEvidence } from '../gitlab/collector.js'
 import { GitLabClient } from '../gitlab/client.js'
 import { renderAuditMarkdown } from '../render/markdown.js'
 import { writeLocalReport } from '../output/local.js'
+import { checkLarkMcp } from '../diagnostics.js'
 
 async function main() {
   await loadEnvFiles()
   const args = parseArgs(process.argv.slice(2))
   const config = await loadConfig()
+  if (!args.dryRun && args.output === 'feishu-doc') {
+    await assertFeishuDocOutputReady()
+  }
   const window = dateWindowForChinaDay(args.date)
   const stories = args.storiesFixture
     ? await readStoriesFixture(args.storiesFixture)
@@ -47,6 +51,16 @@ async function main() {
     process.stderr.write(`Local report was generated before Feishu document creation failed: ${localPath}\n`)
     throw error
   }
+}
+
+async function assertFeishuDocOutputReady(): Promise<void> {
+  const check = await checkLarkMcp()
+  if (check.status === 'pass') return
+  throw new Error([
+    `Feishu document output is not ready: ${check.detail}`,
+    check.nextStep ? `Next: ${check.nextStep}` : undefined,
+    'Run pnpm pmo:doctor for the full setup check.',
+  ].filter(Boolean).join('\n'))
 }
 
 async function readStoriesFixture(path: string): Promise<Story[]> {
