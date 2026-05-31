@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 
 export interface AppConfig {
@@ -10,6 +11,7 @@ export interface AppConfig {
     mcpUrl: string
     spaceName: string
     spaceUrl: string
+    projectKey?: string
     headers?: Record<string, string>
   }
   audit: {
@@ -46,6 +48,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
       mcpUrl,
       spaceName: env.FEISHU_PROJECT_SPACE_NAME ?? 'MAAS_平台',
       spaceUrl: env.FEISHU_PROJECT_SPACE_URL ?? 'https://project.feishu.cn/7358164361912909827_1719375156/story/homepage',
+      projectKey: env.FEISHU_PROJECT_PROJECT_KEY ?? env.FEISHU_PROJECT_KEY ?? extractFeishuProjectSimpleName(env.FEISHU_PROJECT_SPACE_URL),
       headers: parseHeaderConfig(env),
     },
     audit: {
@@ -55,10 +58,17 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
   }
 }
 
+function extractFeishuProjectSimpleName(url: string | undefined): string | undefined {
+  return url?.match(/project\.feishu\.cn\/([^/]+)/)?.[1]
+}
+
 function parseHeaderConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): Record<string, string> | undefined {
   const headers: Record<string, string> = {}
   if (env.FEISHU_PROJECT_MCP_BEARER_TOKEN) {
     headers.Authorization = `Bearer ${env.FEISHU_PROJECT_MCP_BEARER_TOKEN}`
+  }
+  if (env.FEISHU_PROJECT_MCP_TOKEN) {
+    headers['X-Mcp-Token'] = env.FEISHU_PROJECT_MCP_TOKEN
   }
   for (const raw of splitHeaderEntries(env.FEISHU_PROJECT_MCP_AUTH_HEADER)) {
     const index = raw.indexOf('=')
@@ -96,4 +106,31 @@ export function dateWindowForChinaDay(date: string): { since: Date; until: Date 
   const since = new Date(`${date}T00:00:00+08:00`)
   const until = new Date(since.getTime() + 24 * 60 * 60 * 1000)
   return { since, until }
+}
+
+export async function loadEnvFiles(paths = ['.env.local', '.env']): Promise<void> {
+  for (const path of paths) {
+    let content: string
+    try {
+      content = await readFile(path, 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const index = trimmed.indexOf('=')
+      if (index <= 0) continue
+      const key = trimmed.slice(0, index).trim()
+      const value = unquoteEnvValue(trimmed.slice(index + 1).trim())
+      process.env[key] ??= value
+    }
+  }
+}
+
+function unquoteEnvValue(value: string): string {
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1)
+  }
+  return value
 }

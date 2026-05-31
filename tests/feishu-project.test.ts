@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { FeishuProjectMcpClient, FeishuProjectSetupError, normalizeStoryFromMcp } from '../src/feishu/project-mcp.js'
+import { FeishuProjectMcpClient, FeishuProjectSetupError, normalizeStoryFromMcp, normalizeStoryFromMql } from '../src/feishu/project-mcp.js'
 describe('Feishu Project MCP adapter', () => {
   it('normalizes raw MCP fields into a Story', () => {
     const story = normalizeStoryFromMcp({
@@ -31,13 +31,49 @@ describe('Feishu Project MCP adapter', () => {
     expect(err.message).toContain('MAAS_平台')
   })
 
+  it('normalizes Feishu Project MQL rows into a Story', () => {
+    const story = normalizeStoryFromMql({
+      moql_field_list: [
+        { key: 'work_item_id', value: { long_value: 7001 } },
+        { key: 'name', value: { string_value: '企业套餐购买' } },
+        { key: 'work_item_status', value: { key_label_value_list: [{ key: 'doing', label: '开发阶段' }] } },
+        { key: 'priority', value: { key_label_value: { key: '1', label: 'P1' } } },
+        { key: 'owner', value: { user_value: { name_cn: '张三', email: 'zhangsan@example.com' } } },
+        { key: 'current_status_operator', value: { user_value_list: [{ name_cn: '李四' }] } },
+        { key: 'wiki', value: { string_value: 'https://example.com/wiki' } },
+      ],
+    }, '7358164361912909827_1719375156')
+
+    expect(story.id).toBe('7001')
+    expect(story.title).toBe('企业套餐购买')
+    expect(story.status).toBe('开发阶段')
+    expect(story.owners[0]?.name).toBe('李四')
+    expect(story.creator?.name).toBe('张三')
+    expect(story.linkedDocs[0]?.url).toBe('https://example.com/wiki')
+  })
+
   it('sends configured HTTP headers to the MCP endpoint', async () => {
     const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body))
-      if (body.method === 'tools/list') {
-        return jsonResponse({ result: { tools: [{ name: 'story_list' }] } })
+      if (body.params?.name === 'search_project_info') {
+        return jsonResponse({
+          result: {
+            content: [{ type: 'text', text: JSON.stringify({ projects: [{ project_key: 'project-key', name: 'MAAS平台', simple_name: 'space-simple' }] }) }],
+          },
+        })
       }
-      return jsonResponse({ result: { stories: [{ id: 'S1', name: '需求一', status: '开发中' }] } })
+      return jsonResponse({
+        result: {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              data: {
+                1: [{ moql_field_list: [{ key: 'work_item_id', value: { long_value: 1 } }, { key: 'name', value: { string_value: '需求一' } }] }],
+              },
+            }),
+          }],
+        },
+      })
     })
     const client = new FeishuProjectMcpClient({
       mcpUrl: 'https://project.feishu.cn/mcp_server/v1',

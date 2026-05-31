@@ -26,6 +26,40 @@ export function normalizeStoryFromMcp(raw: any): Story {
   }
 }
 
+export function normalizeStoryFromMql(raw: any, projectSimpleName?: string): Story {
+  const fields = Object.fromEntries((raw.moql_field_list ?? []).map((field: any) => [field.key, readMqlValue(field)]))
+  const id = String(fields.work_item_id ?? raw.id ?? '')
+  const status = String(fields.work_item_status ?? '')
+  const owners = normalizePeople(fields.current_status_operator)
+  const creator = normalizePerson(fields.owner)
+  const linkedDocs = normalizeDocs([
+    fields.wiki,
+    fields.field_0bdd58,
+    fields.field_a0719a,
+    fields.field_9afbaa,
+    fields.field_eba98f,
+  ].filter(Boolean))
+  return {
+    id,
+    title: String(fields.name ?? ''),
+    status,
+    owners,
+    creator,
+    priority: fields.priority ? String(fields.priority) : undefined,
+    linkedDocs,
+    fields: {
+      goal: fields.description ? String(fields.description) : undefined,
+      problem: fields.description ? String(fields.description) : undefined,
+      testPlan: fields.field_eba98f ? String(fields.field_eba98f) : undefined,
+      startDate: fields.schedule_start ? String(fields.schedule_start) : undefined,
+      dueDate: fields.schedule_end ? String(fields.schedule_end) : undefined,
+      ...fields,
+    },
+    url: projectSimpleName && id ? `https://project.feishu.cn/${projectSimpleName}/story/detail/${id}` : undefined,
+    updatedAt: fields.updated_at ? String(fields.updated_at) : undefined,
+  }
+}
+
 function normalizeFields(raw: Record<string, unknown>): Story['fields'] {
   const get = (...keys: string[]) => {
     for (const key of keys) {
@@ -66,6 +100,7 @@ function normalizeDocs(raw: unknown): LinkedDoc[] {
   if (!raw) return []
   const arr = Array.isArray(raw) ? raw : [raw]
   return arr.flatMap((doc: any) => {
+    if (typeof doc === 'string') return doc ? [{ title: doc, url: doc }] : []
     const url = doc?.url ?? doc?.link ?? doc?.web_url
     const title = doc?.title ?? doc?.name ?? url
     return url ? [{ title: String(title), url: String(url) }] : []
@@ -92,16 +127,42 @@ export class FeishuProjectMcpClient {
     this.storyListTool = options.storyListTool
   }
 
-  async listStories(spaceName: string): Promise<Story[]> {
+  async listStories(spaceName: string, projectKeyHint?: string): Promise<Story[]> {
     try {
-      const toolName = this.storyListTool ?? await this.discoverStoryListTool()
-      const result = await this.callTool(toolName, { space_name: spaceName, object_type: 'story' })
+      const project = await this.resolveProject(spaceName, projectKeyHint)
+      const toolName = this.storyListTool ?? 'search_by_mql'
+      const result = await this.callTool(toolName, {
+        project_key: project.projectKey,
+        mql: storyListMql(project.name),
+        group_pagination_list: [{ page_num: 1, page_size: 100 }],
+      })
       const rows = extractRows(result)
-      return rows.map(normalizeStoryFromMcp).filter(story => story.id && story.title)
+      return rows.map(row => normalizeStoryFromMql(row, project.simpleName)).filter(story => story.id && story.title)
     } catch (error) {
       if (error instanceof FeishuProjectSetupError) throw error
       throw new FeishuProjectSetupError(error instanceof Error ? error.message : String(error))
     }
+  }
+
+  private async resolveProject(spaceName: string, projectKeyHint?: string): Promise<{ projectKey: string; name: string; simpleName?: string }> {
+    const candidates = [
+      projectKeyHint ? await this.searchProject(projectKeyHint) : undefined,
+      await this.searchProject(spaceName),
+      await this.searchProject(),
+    ].filter(Boolean).flat()
+    const normalizedSpaceName = normalizeProjectName(spaceName)
+    const matched = candidates.find(project =>
+      project.project_key === projectKeyHint
+      || project.simple_name === projectKeyHint
+      || normalizeProjectName(project.name) === normalizedSpaceName
+    ) ?? candidates[0]
+    if (!matched?.project_key) throw new Error(`project_key not found for ${spaceName}`)
+    return { projectKey: matched.project_key, name: matched.name, simpleName: matched.simple_name }
+  }
+
+  private async searchProject(projectKey?: string): Promise<any[]> {
+    const result = await this.callTool('search_project_info', { page_num: 1, ...(projectKey ? { project_key: projectKey } : {}) })
+    return extractProjectRows(result)
   }
 
   private async discoverStoryListTool(): Promise<string> {
@@ -128,8 +189,17 @@ export class FeishuProjectMcpClient {
     const text = await res.text()
     const data = parseMcpBody(text)
     if (data.error) throw new Error(data.error.message ?? JSON.stringify(data.error))
+    if (data.result?.isError) throw new Error(collectMcpText(data.result))
     return data.result
   }
+}
+
+function storyListMql(projectName: string): string {
+  return [
+    'SELECT `work_item_id`, `name`, `work_item_status`, `updated_at`, `schedule`, `priority`,',
+    '`current_status_operator`, `owner`, `wiki`, `field_0bdd58`, `field_a0719a`, `field_9afbaa`, `field_eba98f`, `description`',
+    `FROM \`${projectName}\`.\`需求\` ORDER BY \`updated_at\` DESC LIMIT 100`,
+  ].join(' ')
 }
 
 function parseMcpBody(text: string): any {
@@ -148,11 +218,66 @@ function extractRows(result: any): any[] {
   if (Array.isArray(content)) {
     return content.flatMap((item: any) => {
       if (item.type === 'text') {
-        const parsed = JSON.parse(item.text)
-        return Array.isArray(parsed) ? parsed : parsed.items ?? parsed.stories ?? parsed.data ?? []
+        const parsed = safeJsonParse(item.text)
+        if (!parsed) return []
+        if (Array.isArray(parsed)) return parsed
+        if (parsed.data && typeof parsed.data === 'object') return Object.values(parsed.data).flat() as any[]
+        return parsed.items ?? parsed.stories ?? parsed.data ?? []
       }
       return []
     })
   }
   return []
+}
+
+function extractProjectRows(result: any): any[] {
+  const content = result?.content
+  if (!Array.isArray(content)) return []
+  return content.flatMap((item: any) => {
+    if (item.type !== 'text') return []
+    const parsed = safeJsonParse(item.text)
+    return parsed?.projects ?? []
+  })
+}
+
+function safeJsonParse(text: string): any | undefined {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
+function collectMcpText(result: any): string {
+  if (!Array.isArray(result?.content)) return JSON.stringify(result)
+  return result.content.map((item: any) => item?.text ?? JSON.stringify(item)).join('\n')
+}
+
+function readMqlValue(field: any): unknown {
+  const value = field?.value
+  if (!value || typeof value !== 'object') return undefined
+  if ('string_value' in value) return value.string_value
+  if ('long_value' in value) return value.long_value
+  if ('double_value' in value) return value.double_value
+  if ('bool_value' in value) return value.bool_value
+  if ('user_value' in value) return normalizeMqlUser(value.user_value)
+  if ('user_value_list' in value) return value.user_value_list?.map(normalizeMqlUser)
+  if ('key_label_value' in value) return value.key_label_value?.label ?? value.key_label_value?.key
+  if ('key_label_value_list' in value) return value.key_label_value_list?.map((item: any) => item.label ?? item.key).join(', ')
+  if ('datetime_value' in value) return value.datetime_value
+  if ('date_value' in value) return value.date_value
+  return undefined
+}
+
+function normalizeMqlUser(user: any): PersonRef | undefined {
+  if (!user) return undefined
+  return {
+    name: user.name_cn ?? user.name_en ?? user.email ?? user.user_key,
+    email: user.email,
+    username: user.user_key,
+  }
+}
+
+function normalizeProjectName(name: string | undefined): string {
+  return String(name ?? '').replace(/[_\s]/g, '').toLowerCase()
 }

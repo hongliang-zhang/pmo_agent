@@ -33,6 +33,12 @@ The CLI intentionally fails with setup instructions if Feishu Project MCP is not
 If HTTP OAuth is not usable in the current environment, the CLI also supports header-based Feishu Project MCP auth:
 
 ```bash
+FEISHU_PROJECT_MCP_TOKEN=project-mcp-token
+```
+
+This maps to the Feishu Project MCP `X-Mcp-Token` header. For custom headers, use:
+
+```bash
 FEISHU_PROJECT_MCP_BEARER_TOKEN=project-token
 ```
 
@@ -41,6 +47,8 @@ or:
 ```bash
 FEISHU_PROJECT_MCP_AUTH_HEADER='Authorization=Bearer project-token;X-Custom=value'
 ```
+
+The CLI loads `.env.local` and `.env` automatically. `FEISHU_PROJECT_PROJECT_KEY` is optional; when omitted, the adapter resolves it from the configured Feishu Project space URL by calling `search_project_info`.
 
 ## Commands
 
@@ -78,6 +86,8 @@ Create a Feishu document report after both Feishu Project MCP and `lark-mcp` OAu
 FEISHU_PROJECT_MCP_URL=https://project.feishu.cn/mcp_server/v1 \
 pnpm pmo:audit -- --date 2026-05-31 --output feishu-doc
 ```
+
+`lark-mcp` document creation requires the Feishu app to have a user-identity document permission such as `docs:doc` or `drive:drive`. If Feishu returns `99991672`, open the app permission page from the error message, add a document/drive scope, publish the app permission change if required, then run `lark-mcp login` again so the refreshed token includes the new scope.
 
 ## Safety Boundaries
 
