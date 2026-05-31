@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "pmo:audit": "tsx src/cli/daily-audit.ts"
+    "pmo:audit": "tsx src/cli/daily-audit.ts",
+    "pmo:doctor": "tsx src/cli/doctor.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -64,6 +64,14 @@ Type-check:
 pnpm build
 ```
 
+Check local setup before running a live audit:
+
+```bash
+pnpm pmo:doctor
+```
+
+The doctor checks GitLab credentials, Feishu Project MCP access, and the current `lark-mcp` OAuth session. It exits non-zero only for hard failures; missing Feishu document scopes are reported as a warning because local Markdown reports still work.
+
 Run a local development audit with fixture stories and real GitLab evidence:
 
 ```bash
