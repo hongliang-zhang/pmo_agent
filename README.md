@@ -50,6 +50,14 @@ FEISHU_PROJECT_MCP_AUTH_HEADER='Authorization=Bearer project-token;X-Custom=valu
 
 The CLI loads `.env.local` and `.env` automatically. `FEISHU_PROJECT_PROJECT_KEY` is optional; when omitted, the adapter resolves it from the configured Feishu Project space URL by calling `search_project_info`.
 
+By default the live audit focuses on active stories only:
+
+```bash
+FEISHU_PROJECT_ACTIVE_STATUSES=开发阶段,测试阶段,上线阶段,进行中
+```
+
+Adjust this list if the MAAS_平台 workflow changes or if the first report should include earlier states such as `开始`.
+
 ## Commands
 
 Run tests:

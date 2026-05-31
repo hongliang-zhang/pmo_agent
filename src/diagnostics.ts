@@ -41,11 +41,11 @@ async function checkFeishuProject(config: AppConfig): Promise<DiagnosticCheck> {
     const stories = await new FeishuProjectMcpClient({
       mcpUrl: config.feishuProject.mcpUrl,
       headers: config.feishuProject.headers,
-    }).listStories(config.feishuProject.spaceName, config.feishuProject.projectKey)
+    }).listStories(config.feishuProject.spaceName, config.feishuProject.projectKey, config.feishuProject.activeStatuses)
     return {
       name: 'Feishu Project MCP',
       status: 'pass',
-      detail: `Connected. Read ${stories.length} stories from ${config.feishuProject.spaceName}.`,
+      detail: `Connected. Read ${stories.length} active stories from ${config.feishuProject.spaceName}.`,
     }
   } catch (error) {
     return {

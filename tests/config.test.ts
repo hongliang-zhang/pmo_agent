@@ -19,6 +19,7 @@ describe('loadConfig', () => {
     expect(config.gitlab.baseUrl).toBe('https://dev.aminer.cn')
     expect(config.audit.timezone).toBe('Asia/Shanghai')
     expect(config.feishuProject.headers).toEqual({ Authorization: 'Bearer project-token' })
+    expect(config.feishuProject.activeStatuses).toEqual(['开发阶段', '测试阶段', '上线阶段', '进行中'])
   })
 
   it('falls back to git credential for GitLab token', async () => {
@@ -43,6 +44,19 @@ describe('loadConfig', () => {
     })
 
     expect(config.feishuProject.headers).toEqual({ 'X-Mcp-Token': 'project-token' })
+  })
+
+  it('allows active Feishu Project statuses to be configured', async () => {
+    const config = await loadConfig({
+      env: {
+        GITLAB_TOKEN: 'env-token',
+        FEISHU_PROJECT_MCP_URL: 'https://project.feishu.cn/mcp_server/v1',
+        FEISHU_PROJECT_ACTIVE_STATUSES: '开始,开发阶段',
+      },
+      credentialFill: async () => undefined,
+    })
+
+    expect(config.feishuProject.activeStatuses).toEqual(['开始', '开发阶段'])
   })
 
   it('returns a clear error when required setup is missing', async () => {

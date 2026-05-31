@@ -18,7 +18,7 @@ async function main() {
   const stories = args.storiesFixture
     ? await readStoriesFixture(args.storiesFixture)
     : await new FeishuProjectMcpClient({ mcpUrl: config.feishuProject.mcpUrl, headers: config.feishuProject.headers })
-      .listStories(config.feishuProject.spaceName, config.feishuProject.projectKey)
+      .listStories(config.feishuProject.spaceName, config.feishuProject.projectKey, config.feishuProject.activeStatuses)
 
   const gitlab = new GitLabClient(config.gitlab)
   const evidence = await collectGitLabEvidence({

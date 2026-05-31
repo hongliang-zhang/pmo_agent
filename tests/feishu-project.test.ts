@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { FeishuProjectMcpClient, FeishuProjectSetupError, normalizeStoryFromMcp, normalizeStoryFromMql } from '../src/feishu/project-mcp.js'
+import { FeishuProjectMcpClient, FeishuProjectSetupError, normalizeStoryFromMcp, normalizeStoryFromMql, storyListMql } from '../src/feishu/project-mcp.js'
 describe('Feishu Project MCP adapter', () => {
   it('normalizes raw MCP fields into a Story', () => {
     const story = normalizeStoryFromMcp({
@@ -87,6 +87,14 @@ describe('Feishu Project MCP adapter', () => {
       Authorization: 'Bearer project-token',
       'X-Custom': 'value',
     })
+  })
+
+  it('queries active stories by configured Feishu Project statuses', () => {
+    const mql = storyListMql('MAAS平台', ['开发阶段', '测试阶段'])
+
+    expect(mql).toContain('FROM `MAAS平台`.`需求`')
+    expect(mql).toContain("WHERE `work_item_status` in ('开发阶段','测试阶段')")
+    expect(mql).toContain('ORDER BY `updated_at` DESC')
   })
 })
 

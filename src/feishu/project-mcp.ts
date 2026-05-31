@@ -127,13 +127,13 @@ export class FeishuProjectMcpClient {
     this.storyListTool = options.storyListTool
   }
 
-  async listStories(spaceName: string, projectKeyHint?: string): Promise<Story[]> {
+  async listStories(spaceName: string, projectKeyHint?: string, activeStatuses: string[] = []): Promise<Story[]> {
     try {
       const project = await this.resolveProject(spaceName, projectKeyHint)
       const toolName = this.storyListTool ?? 'search_by_mql'
       const result = await this.callTool(toolName, {
         project_key: project.projectKey,
-        mql: storyListMql(project.name),
+        mql: storyListMql(project.name, activeStatuses),
         group_pagination_list: [{ page_num: 1, page_size: 100 }],
       })
       const rows = extractRows(result)
@@ -194,12 +194,19 @@ export class FeishuProjectMcpClient {
   }
 }
 
-function storyListMql(projectName: string): string {
+export function storyListMql(projectName: string, activeStatuses: string[] = []): string {
+  const where = activeStatuses.length
+    ? ` WHERE \`work_item_status\` in (${activeStatuses.map(quoteMqlString).join(',')})`
+    : ''
   return [
     'SELECT `work_item_id`, `name`, `work_item_status`, `updated_at`, `schedule`, `priority`,',
     '`current_status_operator`, `owner`, `wiki`, `field_0bdd58`, `field_a0719a`, `field_9afbaa`, `field_eba98f`, `description`',
-    `FROM \`${projectName}\`.\`需求\` ORDER BY \`updated_at\` DESC LIMIT 100`,
+    `FROM \`${projectName}\`.\`需求\`${where} ORDER BY \`updated_at\` DESC LIMIT 100`,
   ].join(' ')
+}
+
+function quoteMqlString(value: string): string {
+  return `'${value.replace(/'/g, "\\'")}'`
 }
 
 function parseMcpBody(text: string): any {
