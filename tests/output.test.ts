@@ -76,6 +76,37 @@ describe('report output', () => {
     }
   })
 
+  it('keeps historical report entries in the local index', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'pmo-index-history-'))
+    try {
+      await writeLocalReportArtifacts({
+        reportsDir: dir,
+        date: '2026-05-31',
+        markdown: '# Old',
+        report: testReport('2026-05-31', 2),
+        generatedAt: new Date('2026-05-31T08:00:00.000Z'),
+      })
+      await writeLocalReportArtifacts({
+        reportsDir: dir,
+        date: '2026-06-01',
+        markdown: '# New',
+        report: testReport('2026-06-01', 3),
+        generatedAt: new Date('2026-06-01T08:00:00.000Z'),
+      })
+
+      const index = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8'))
+      expect(index.latest.date).toBe('2026-06-01')
+      expect(index.reports.map((report: any) => report.date)).toEqual(['2026-06-01', '2026-05-31'])
+      expect(index.reports[1].summary.stories).toBe(2)
+
+      const indexHtml = await readFile(join(dir, 'index.html'), 'utf8')
+      expect(indexHtml).toContain('2026-06-01-pmo-audit.html')
+      expect(indexHtml).toContain('2026-05-31-pmo-audit.html')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('explains how to configure lark-mcp when Feishu doc output cannot start', async () => {
     const output = createFeishuDocOutput({ codexConfigPath: '/missing/config.toml' })
 
@@ -107,3 +138,18 @@ describe('report output', () => {
     expect(message).toContain('rerun lark-mcp login')
   })
 })
+
+function testReport(date: string, stories: number): AuditReport {
+  return {
+    title: `MAAS_平台 PMO 状态核查日报 ${date}`,
+    date,
+    summary: { stories, progressed: 1, risky: 1, incomplete: 1, suggestedContacts: 1 },
+    progressedStories: [],
+    riskyStories: [],
+    incompleteStories: [],
+    gitlabEvidence: [],
+    isolatedEvidence: [],
+    suggestedContacts: [],
+    noNeedToDisturb: [],
+  }
+}

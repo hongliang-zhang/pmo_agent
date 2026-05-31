@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AuditReport } from '../domain.js'
 
@@ -38,33 +38,6 @@ export async function writeLocalReportArtifacts(input: {
   const indexJsonPath = join(input.reportsDir, 'index.json')
   const generatedAt = (input.generatedAt ?? new Date()).toISOString()
   const html = renderLocalHtml(input.report, input.markdown, generatedAt)
-  const index = {
-    latest: {
-      title: input.report.title,
-      date: input.date,
-      generatedAt,
-      summary: input.report.summary,
-      files: {
-        markdown: markdownPath,
-        json: jsonPath,
-        html: htmlPath,
-        manifest: manifestPath,
-      },
-    },
-    reports: [{
-      title: input.report.title,
-      date: input.date,
-      generatedAt,
-      summary: input.report.summary,
-      files: {
-        markdown: markdownPath,
-        json: jsonPath,
-        html: htmlPath,
-        manifest: manifestPath,
-      },
-    }],
-  }
-  const indexHtml = renderIndexHtml(index)
   const manifest = {
     title: input.report.title,
     date: input.date,
@@ -81,6 +54,8 @@ export async function writeLocalReportArtifacts(input: {
       indexJson: indexJsonPath,
     },
   }
+  const index = await buildReportIndex(input.reportsDir, manifest)
+  const indexHtml = renderIndexHtml(index)
 
   await Promise.all([
     writeFile(markdownPath, input.markdown, 'utf8'),
@@ -94,6 +69,52 @@ export async function writeLocalReportArtifacts(input: {
   ])
 
   return { markdownPath, jsonPath, htmlPath, latestMarkdownPath, latestHtmlPath, manifestPath, indexPath, indexJsonPath }
+}
+
+async function buildReportIndex(reportsDir: string, currentManifest: ReportManifest): Promise<ReportIndex> {
+  const manifests = new Map<string, ReportIndexEntry>()
+  for (const existing of await readExistingManifests(reportsDir)) {
+    manifests.set(existing.date, manifestToIndexEntry(existing))
+  }
+  manifests.set(currentManifest.date, manifestToIndexEntry(currentManifest))
+  const reports = [...manifests.values()].sort((a, b) =>
+    b.date.localeCompare(a.date) || b.generatedAt.localeCompare(a.generatedAt)
+  )
+  return { latest: reports[0]!, reports }
+}
+
+async function readExistingManifests(reportsDir: string): Promise<ReportManifest[]> {
+  let files: string[]
+  try {
+    files = await readdir(reportsDir)
+  } catch {
+    return []
+  }
+  const manifests = await Promise.all(files
+    .filter(file => /^\d{4}-\d{2}-\d{2}-pmo-audit-manifest\.json$/.test(file))
+    .map(async file => {
+      try {
+        return JSON.parse(await readFile(join(reportsDir, file), 'utf8')) as ReportManifest
+      } catch {
+        return undefined
+      }
+    }))
+  return manifests.filter((manifest): manifest is ReportManifest => Boolean(manifest?.date && manifest.files?.html))
+}
+
+function manifestToIndexEntry(manifest: ReportManifest): ReportIndexEntry {
+  return {
+    title: manifest.title,
+    date: manifest.date,
+    generatedAt: manifest.generatedAt,
+    summary: manifest.summary,
+    files: {
+      markdown: manifest.files.markdown,
+      json: manifest.files.json,
+      html: manifest.files.html,
+      manifest: manifest.files.manifest,
+    },
+  }
 }
 
 function renderLocalHtml(report: AuditReport, markdown: string, generatedAt: string): string {
@@ -134,22 +155,37 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function renderIndexHtml(index: {
-  latest: {
-    title: string
-    date: string
-    generatedAt: string
-    summary: AuditReport['summary']
-    files: { markdown: string; json: string; html: string; manifest: string }
+interface ReportManifest {
+  title: string
+  date: string
+  generatedAt: string
+  summary: AuditReport['summary']
+  files: {
+    markdown: string
+    json: string
+    html: string
+    latestMarkdown?: string
+    latestHtml?: string
+    manifest: string
+    index?: string
+    indexJson?: string
   }
-  reports: Array<{
-    title: string
-    date: string
-    generatedAt: string
-    summary: AuditReport['summary']
-    files: { markdown: string; json: string; html: string; manifest: string }
-  }>
-}): string {
+}
+
+interface ReportIndexEntry {
+  title: string
+  date: string
+  generatedAt: string
+  summary: AuditReport['summary']
+  files: { markdown: string; json: string; html: string; manifest: string }
+}
+
+interface ReportIndex {
+  latest: ReportIndexEntry
+  reports: ReportIndexEntry[]
+}
+
+function renderIndexHtml(index: ReportIndex): string {
   const rows = index.reports.map(report => [
     '<tr>',
     `<td>${escapeHtml(report.date)}</td>`,
