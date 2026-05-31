@@ -74,17 +74,20 @@ function normalizeDocs(raw: unknown): LinkedDoc[] {
 
 interface FeishuProjectMcpClientOptions {
   mcpUrl: string
+  headers?: Record<string, string>
   fetch?: typeof fetch
   storyListTool?: string
 }
 
 export class FeishuProjectMcpClient {
   private readonly mcpUrl: string
+  private readonly headers: Record<string, string>
   private readonly fetchImpl: typeof fetch
   private readonly storyListTool?: string
 
   constructor(options: FeishuProjectMcpClientOptions) {
     this.mcpUrl = options.mcpUrl
+    this.headers = options.headers ?? {}
     this.fetchImpl = options.fetch ?? fetch
     this.storyListTool = options.storyListTool
   }
@@ -117,7 +120,7 @@ export class FeishuProjectMcpClient {
   private async rpc(method: string, params: Record<string, unknown>): Promise<any> {
     const res = await this.fetchImpl(this.mcpUrl, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...this.headers },
       body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
     })
     if (res.status === 401 || res.status === 403) throw new FeishuProjectSetupError(`HTTP ${res.status}`)

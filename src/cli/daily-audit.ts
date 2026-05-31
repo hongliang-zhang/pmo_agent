@@ -16,7 +16,7 @@ async function main() {
   const window = dateWindowForChinaDay(args.date)
   const stories = args.storiesFixture
     ? await readStoriesFixture(args.storiesFixture)
-    : await new FeishuProjectMcpClient({ mcpUrl: config.feishuProject.mcpUrl }).listStories(config.feishuProject.spaceName)
+    : await new FeishuProjectMcpClient({ mcpUrl: config.feishuProject.mcpUrl, headers: config.feishuProject.headers }).listStories(config.feishuProject.spaceName)
 
   const gitlab = new GitLabClient(config.gitlab)
   const evidence = await collectGitLabEvidence({

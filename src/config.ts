@@ -10,6 +10,7 @@ export interface AppConfig {
     mcpUrl: string
     spaceName: string
     spaceUrl: string
+    headers?: Record<string, string>
   }
   audit: {
     timezone: string
@@ -45,12 +46,31 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
       mcpUrl,
       spaceName: env.FEISHU_PROJECT_SPACE_NAME ?? 'MAAS_平台',
       spaceUrl: env.FEISHU_PROJECT_SPACE_URL ?? 'https://project.feishu.cn/7358164361912909827_1719375156/story/homepage',
+      headers: parseHeaderConfig(env),
     },
     audit: {
       timezone: env.PMO_TIMEZONE ?? 'Asia/Shanghai',
       reportsDir: env.PMO_REPORTS_DIR ?? 'reports',
     },
   }
+}
+
+function parseHeaderConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): Record<string, string> | undefined {
+  const headers: Record<string, string> = {}
+  if (env.FEISHU_PROJECT_MCP_BEARER_TOKEN) {
+    headers.Authorization = `Bearer ${env.FEISHU_PROJECT_MCP_BEARER_TOKEN}`
+  }
+  for (const raw of splitHeaderEntries(env.FEISHU_PROJECT_MCP_AUTH_HEADER)) {
+    const index = raw.indexOf('=')
+    if (index <= 0) throw new Error('Invalid FEISHU_PROJECT_MCP_AUTH_HEADER. Use Header-Name=value;Other=value')
+    headers[raw.slice(0, index).trim()] = raw.slice(index + 1).trim()
+  }
+  return Object.keys(headers).length ? headers : undefined
+}
+
+function splitHeaderEntries(value: string | undefined): string[] {
+  if (!value) return []
+  return value.split(';').map(part => part.trim()).filter(Boolean)
 }
 
 export async function readGitLabTokenFromGitCredential(): Promise<string | undefined> {

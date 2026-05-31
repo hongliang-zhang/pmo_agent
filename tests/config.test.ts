@@ -7,6 +7,7 @@ describe('loadConfig', () => {
       env: {
         GITLAB_TOKEN: 'env-token',
         FEISHU_PROJECT_MCP_URL: 'https://project.feishu.cn/mcp_server/v1',
+        FEISHU_PROJECT_MCP_AUTH_HEADER: 'Authorization=Bearer project-token',
       },
       credentialFill: async () => 'credential-token',
     })
@@ -14,6 +15,7 @@ describe('loadConfig', () => {
     expect(config.gitlab.token).toBe('env-token')
     expect(config.gitlab.baseUrl).toBe('https://dev.aminer.cn')
     expect(config.audit.timezone).toBe('Asia/Shanghai')
+    expect(config.feishuProject.headers).toEqual({ Authorization: 'Bearer project-token' })
   })
 
   it('falls back to git credential for GitLab token', async () => {

@@ -30,6 +30,18 @@ Feishu Project MCP must be enabled for the `MAAS_平台` space before real stori
 
 The CLI intentionally fails with setup instructions if Feishu Project MCP is not authorized. It does not use fake data unless `--stories-fixture` is explicitly provided.
 
+If HTTP OAuth is not usable in the current environment, the CLI also supports header-based Feishu Project MCP auth:
+
+```bash
+FEISHU_PROJECT_MCP_BEARER_TOKEN=project-token
+```
+
+or:
+
+```bash
+FEISHU_PROJECT_MCP_AUTH_HEADER='Authorization=Bearer project-token;X-Custom=value'
+```
+
 ## Commands
 
 Run tests:

@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { FeishuProjectSetupError, normalizeStoryFromMcp } from '../src/feishu/project-mcp.js'
-
+import { describe, expect, it, vi } from 'vitest'
+import { FeishuProjectMcpClient, FeishuProjectSetupError, normalizeStoryFromMcp } from '../src/feishu/project-mcp.js'
 describe('Feishu Project MCP adapter', () => {
   it('normalizes raw MCP fields into a Story', () => {
     const story = normalizeStoryFromMcp({
@@ -31,4 +30,33 @@ describe('Feishu Project MCP adapter', () => {
     expect(err.message).toContain('https://project.feishu.cn/mcp_server/v1')
     expect(err.message).toContain('MAAS_平台')
   })
+
+  it('sends configured HTTP headers to the MCP endpoint', async () => {
+    const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body))
+      if (body.method === 'tools/list') {
+        return jsonResponse({ result: { tools: [{ name: 'story_list' }] } })
+      }
+      return jsonResponse({ result: { stories: [{ id: 'S1', name: '需求一', status: '开发中' }] } })
+    })
+    const client = new FeishuProjectMcpClient({
+      mcpUrl: 'https://project.feishu.cn/mcp_server/v1',
+      headers: { Authorization: 'Bearer project-token', 'X-Custom': 'value' },
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    })
+
+    await client.listStories('MAAS_平台')
+
+    expect(fetch.mock.calls[0]?.[1]?.headers).toMatchObject({
+      Authorization: 'Bearer project-token',
+      'X-Custom': 'value',
+    })
+  })
 })
+
+function jsonResponse(data: unknown): Response {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+}
