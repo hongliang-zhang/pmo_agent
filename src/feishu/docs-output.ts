@@ -6,7 +6,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 export class FeishuDocSetupError extends Error {
   constructor(reason: string) {
-    super(`Feishu doc output is not configured: ${reason}. Configure lark-mcp in Codex or set LARK_MCP_COMMAND/LARK_MCP_ARGS, then retry --output feishu-doc.`)
+    super(`Feishu doc output is not configured: ${explainFeishuDocSetupFailure(reason)} Configure lark-mcp in Codex or set LARK_MCP_COMMAND/LARK_MCP_ARGS, then retry --output feishu-doc.`)
     this.name = 'FeishuDocSetupError'
   }
 }
@@ -45,6 +45,22 @@ export function ensureMcpToolSucceeded(raw: unknown): void {
   if (raw && typeof raw === 'object' && 'isError' in raw && (raw as any).isError) {
     throw new FeishuDocSetupError(collectText(raw))
   }
+}
+
+export function explainFeishuDocSetupFailure(reason: string): string {
+  if (reason.includes('99991672') || /Access denied.*docs:doc|drive:drive/s.test(reason)) {
+    const url = reason.match(/https:\/\/open\.feishu\.cn\/app\/[^\s"',}]+\/auth[^\s"',}]*/)?.[0]
+    return [
+      'Feishu app permissions are missing for document creation.',
+      'Add a user-identity document permission such as docs:doc or drive:drive, publish/approve the permission change, then rerun lark-mcp login so the refreshed token includes the new scope.',
+      url ? `Permission page: ${url}.` : '',
+      `Raw error: ${reason}.`,
+    ].filter(Boolean).join(' ')
+  }
+  if (/invalid or expired|token.*expired/i.test(reason)) {
+    return `The lark-mcp user token is invalid or expired. Rerun lark-mcp login and authorize in the browser. Raw error: ${reason}.`
+  }
+  return `${reason}.`
 }
 
 export function extractDocumentResult(raw: unknown): { documentId?: string; url?: string } {

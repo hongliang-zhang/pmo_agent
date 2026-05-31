@@ -37,11 +37,16 @@ async function main() {
     return
   }
 
-  const doc = await createFeishuDocOutput({
-    command: process.env.LARK_MCP_COMMAND,
-    args: parseOptionalArgs(process.env.LARK_MCP_ARGS),
-  }).createDocument(markdown)
-  process.stdout.write(`Local report: ${localPath}\nFeishu document: ${doc.url ?? doc.documentId ?? JSON.stringify(doc.raw)}\n`)
+  try {
+    const doc = await createFeishuDocOutput({
+      command: process.env.LARK_MCP_COMMAND,
+      args: parseOptionalArgs(process.env.LARK_MCP_ARGS),
+    }).createDocument(markdown)
+    process.stdout.write(`Local report: ${localPath}\nFeishu document: ${doc.url ?? doc.documentId ?? JSON.stringify(doc.raw)}\n`)
+  } catch (error) {
+    process.stderr.write(`Local report was generated before Feishu document creation failed: ${localPath}\n`)
+    throw error
+  }
 }
 
 async function readStoriesFixture(path: string): Promise<Story[]> {

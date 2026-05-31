@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { writeLocalReport } from '../src/output/local.js'
-import { createFeishuDocOutput, ensureMcpToolSucceeded, extractDocumentResult, FeishuDocSetupError } from '../src/feishu/docs-output.js'
+import { createFeishuDocOutput, ensureMcpToolSucceeded, extractDocumentResult, explainFeishuDocSetupFailure, FeishuDocSetupError } from '../src/feishu/docs-output.js'
 
 describe('report output', () => {
   it('writes local markdown reports to the configured directory', async () => {
@@ -39,5 +39,13 @@ describe('report output', () => {
   it('treats MCP tool isError responses as setup failures', async () => {
     expect(() => ensureMcpToolSucceeded({ isError: true, content: [{ type: 'text', text: 'token expired' }] }))
       .toThrow(FeishuDocSetupError)
+  })
+
+  it('turns Feishu permission errors into actionable setup guidance', () => {
+    const message = explainFeishuDocSetupFailure('{"code":99991672,"msg":"Access denied. One of the following scopes is required: [docs:doc, drive:drive]","url":"https://open.feishu.cn/app/cli_x/auth?q=docs:doc"}')
+
+    expect(message).toContain('Feishu app permissions are missing')
+    expect(message).toContain('docs:doc')
+    expect(message).toContain('rerun lark-mcp login')
   })
 })
