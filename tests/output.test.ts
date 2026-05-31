@@ -47,7 +47,8 @@ describe('report output', () => {
       const html = await readFile(artifacts.htmlPath, 'utf8')
       expect(html).toContain('<!doctype html>')
       expect(html).toContain('<title>MAAS_平台 PMO 状态核查日报 2026-05-31</title>')
-      expect(html).toContain('<pre># Report</pre>')
+      expect(html).not.toContain('<pre># Report</pre>')
+      expect(html).toContain('<h1>Report</h1>')
       await expect(readFile(artifacts.latestHtmlPath, 'utf8')).resolves.toBe(html)
 
       const json = JSON.parse(await readFile(artifacts.jsonPath, 'utf8'))
@@ -102,6 +103,39 @@ describe('report output', () => {
       const indexHtml = await readFile(join(dir, 'index.html'), 'utf8')
       expect(indexHtml).toContain('2026-06-01-pmo-audit.html')
       expect(indexHtml).toContain('2026-05-31-pmo-audit.html')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('renders markdown tables and links as readable HTML', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'pmo-readable-html-'))
+    try {
+      const artifacts = await writeLocalReportArtifacts({
+        reportsDir: dir,
+        date: '2026-06-01',
+        markdown: [
+          '# PMO Report',
+          '',
+          '## 风险需求',
+          '',
+          '| 需求 | 风险 | 建议 |',
+          '|---|---|---|',
+          '| [企业套餐购买](https://project.feishu.cn/story/detail/1) | missing_goal | 补目标 |',
+          '',
+          '- 暂无。',
+        ].join('\n'),
+        report: testReport('2026-06-01', 1),
+      })
+
+      const html = await readFile(artifacts.htmlPath, 'utf8')
+      expect(html).toContain('<h1>PMO Report</h1>')
+      expect(html).toContain('<h2>风险需求</h2>')
+      expect(html).toContain('<div class="table-wrap"><table>')
+      expect(html).toContain('<th>需求</th>')
+      expect(html).toContain('<td><a href="https://project.feishu.cn/story/detail/1">企业套餐购买</a></td>')
+      expect(html).toContain('<ul>')
+      expect(html).not.toContain('| 需求 | 风险 | 建议 |')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

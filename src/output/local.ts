@@ -118,6 +118,7 @@ function manifestToIndexEntry(manifest: ReportManifest): ReportIndexEntry {
 }
 
 function renderLocalHtml(report: AuditReport, markdown: string, generatedAt: string): string {
+  const body = renderMarkdownHtml(markdown)
   return [
     '<!doctype html>',
     '<html lang="zh-CN">',
@@ -126,25 +127,101 @@ function renderLocalHtml(report: AuditReport, markdown: string, generatedAt: str
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${escapeHtml(report.title)}</title>`,
     '<style>',
-    ':root{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}',
-    'body{margin:0;padding:32px;background:#f6f7f9;color:#1f2328}',
-    'main{max-width:1180px;margin:0 auto;background:#fff;border:1px solid #d8dee4;border-radius:8px;padding:28px}',
-    'h1{font-size:24px;margin:0 0 4px}',
-    '.meta{color:#57606a;margin:0 0 24px}',
-    'pre{white-space:pre-wrap;word-break:break-word;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0}',
-    '@media (prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}main{background:#161b22;border-color:#30363d}.meta{color:#8b949e}}',
+    ':root{font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5;color:#1f2328;background:#f4f6f8}',
+    'body{margin:0;padding:28px;background:linear-gradient(180deg,#f7f8fa 0,#eef2f6 100%)}',
+    'main{max-width:1280px;margin:0 auto;background:#fff;border:1px solid #d8dee4;border-radius:8px;padding:28px;box-shadow:0 18px 45px rgba(31,35,40,.08)}',
+    '.hero{border-bottom:1px solid #d8dee4;margin-bottom:24px;padding-bottom:18px}',
+    '.hero h1{font-size:28px;line-height:1.2;margin:0 0 6px;letter-spacing:0}',
+    '.meta{color:#57606a;margin:0;font-size:14px}',
+    '.content h1{font-size:24px;margin:28px 0 12px}.content h2{font-size:20px;margin:28px 0 12px}.content h3{font-size:17px;margin:22px 0 10px}',
+    '.content p{margin:10px 0}.content ul{margin:10px 0 18px;padding-left:22px}.content li{margin:6px 0}',
+    '.table-wrap{overflow-x:auto;margin:14px 0 24px;border:1px solid #d8dee4;border-radius:8px;background:#fff}',
+    'table{width:100%;min-width:760px;border-collapse:collapse;font-size:14px}th,td{padding:10px 12px;border-bottom:1px solid #d8dee4;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#f6f8fa;color:#57606a;font-weight:650}tr:last-child td{border-bottom:0}tbody tr:nth-child(even){background:#fbfcfd}',
+    'a{color:#0969da;text-decoration:none}a:hover{text-decoration:underline}code{background:#f6f8fa;border:1px solid #d8dee4;border-radius:4px;padding:1px 4px}',
     '</style>',
     '</head>',
     '<body>',
     '<main>',
+    '<section class="hero">',
     `<h1>${escapeHtml(report.title)}</h1>`,
     `<p class="meta">Generated at ${escapeHtml(generatedAt)}</p>`,
-    `<pre>${escapeHtml(markdown)}</pre>`,
+    '</section>',
+    `<section class="content">${body}</section>`,
     '</main>',
     '</body>',
     '</html>',
     '',
   ].join('\n')
+}
+
+function renderMarkdownHtml(markdown: string): string {
+  const lines = markdown.split(/\r?\n/)
+  const blocks: string[] = []
+  for (let i = 0; i < lines.length;) {
+    const line = lines[i] ?? ''
+    if (!line.trim()) {
+      i++
+      continue
+    }
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line)
+    if (heading) {
+      const level = heading[1]!.length
+      blocks.push(`<h${level}>${renderInlineMarkdown(heading[2]!)}</h${level}>`)
+      i++
+      continue
+    }
+    if (isTableStart(lines, i)) {
+      const tableLines: string[] = []
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i] ?? '')) {
+        tableLines.push(lines[i]!)
+        i++
+      }
+      blocks.push(renderMarkdownTable(tableLines))
+      continue
+    }
+    if (/^\s*-\s+/.test(line)) {
+      const items: string[] = []
+      while (i < lines.length && /^\s*-\s+/.test(lines[i] ?? '')) {
+        items.push(`<li>${renderInlineMarkdown((lines[i] ?? '').replace(/^\s*-\s+/, ''))}</li>`)
+        i++
+      }
+      blocks.push(`<ul>${items.join('')}</ul>`)
+      continue
+    }
+    const paragraph: string[] = []
+    while (i < lines.length && lines[i]?.trim() && !/^(#{1,3})\s+/.test(lines[i]!) && !isTableStart(lines, i) && !/^\s*-\s+/.test(lines[i]!)) {
+      paragraph.push(lines[i]!.trim())
+      i++
+    }
+    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(' '))}</p>`)
+  }
+  return blocks.join('\n')
+}
+
+function isTableStart(lines: string[], index: number): boolean {
+  const header = lines[index] ?? ''
+  const divider = lines[index + 1] ?? ''
+  return /^\s*\|.*\|\s*$/.test(header) && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(divider)
+}
+
+function renderMarkdownTable(lines: string[]): string {
+  const [headerLine, _divider, ...bodyLines] = lines
+  const headers = splitMarkdownTableRow(headerLine ?? '')
+  const rows = bodyLines.map(splitMarkdownTableRow)
+  const thead = `<thead><tr>${headers.map(cell => `<th>${renderInlineMarkdown(cell)}</th>`).join('')}</tr></thead>`
+  const tbody = `<tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${renderInlineMarkdown(cell)}</td>`).join('')}</tr>`).join('')}</tbody>`
+  return `<div class="table-wrap"><table>${thead}${tbody}</table></div>`
+}
+
+function splitMarkdownTableRow(line: string): string[] {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim())
+}
+
+function renderInlineMarkdown(value: string): string {
+  const escaped = escapeHtml(value)
+  return escaped
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>')
 }
 
 function escapeHtml(value: string): string {
