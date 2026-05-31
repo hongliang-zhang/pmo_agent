@@ -1,0 +1,18 @@
+[
+  {
+    "id": "PMO-AUDIT",
+    "title": "PMO 状态核查 Agent",
+    "status": "开发中",
+    "owners": [{ "name": "Hongliang" }],
+    "linkedDocs": [{ "title": "PMO Agent 需求文档 v2", "url": "docs/pmo-agent-requirements-v2.zh-CN.md" }],
+    "fields": {
+      "goal": "建立 MAAS_平台需求状态核查能力",
+      "testPlan": "CLI dry-run、单测、GitLab smoke test",
+      "nextStep": "接入飞书项目 MCP",
+      "startDate": "2026-05-31",
+      "dueDate": "2026-06-03"
+    },
+    "url": "https://project.feishu.cn/7358164361912909827_1719375156/story/homepage",
+    "updatedAt": "2026-05-31T10:00:00Z"
+  }
+]
