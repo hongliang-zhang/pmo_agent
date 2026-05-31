@@ -16,6 +16,8 @@ export interface LocalReportArtifacts {
   latestMarkdownPath: string
   latestHtmlPath: string
   manifestPath: string
+  indexPath: string
+  indexJsonPath: string
 }
 
 export async function writeLocalReportArtifacts(input: {
@@ -32,8 +34,37 @@ export async function writeLocalReportArtifacts(input: {
   const latestMarkdownPath = join(input.reportsDir, 'latest-pmo-audit.md')
   const latestHtmlPath = join(input.reportsDir, 'latest-pmo-audit.html')
   const manifestPath = join(input.reportsDir, `${input.date}-pmo-audit-manifest.json`)
+  const indexPath = join(input.reportsDir, 'index.html')
+  const indexJsonPath = join(input.reportsDir, 'index.json')
   const generatedAt = (input.generatedAt ?? new Date()).toISOString()
   const html = renderLocalHtml(input.report, input.markdown, generatedAt)
+  const index = {
+    latest: {
+      title: input.report.title,
+      date: input.date,
+      generatedAt,
+      summary: input.report.summary,
+      files: {
+        markdown: markdownPath,
+        json: jsonPath,
+        html: htmlPath,
+        manifest: manifestPath,
+      },
+    },
+    reports: [{
+      title: input.report.title,
+      date: input.date,
+      generatedAt,
+      summary: input.report.summary,
+      files: {
+        markdown: markdownPath,
+        json: jsonPath,
+        html: htmlPath,
+        manifest: manifestPath,
+      },
+    }],
+  }
+  const indexHtml = renderIndexHtml(index)
   const manifest = {
     title: input.report.title,
     date: input.date,
@@ -46,6 +77,8 @@ export async function writeLocalReportArtifacts(input: {
       latestMarkdown: latestMarkdownPath,
       latestHtml: latestHtmlPath,
       manifest: manifestPath,
+      index: indexPath,
+      indexJson: indexJsonPath,
     },
   }
 
@@ -56,9 +89,11 @@ export async function writeLocalReportArtifacts(input: {
     writeFile(latestHtmlPath, html, 'utf8'),
     writeFile(jsonPath, `${JSON.stringify(input.report, null, 2)}\n`, 'utf8'),
     writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'),
+    writeFile(indexJsonPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8'),
+    writeFile(indexPath, indexHtml, 'utf8'),
   ])
 
-  return { markdownPath, jsonPath, htmlPath, latestMarkdownPath, latestHtmlPath, manifestPath }
+  return { markdownPath, jsonPath, htmlPath, latestMarkdownPath, latestHtmlPath, manifestPath, indexPath, indexJsonPath }
 }
 
 function renderLocalHtml(report: AuditReport, markdown: string, generatedAt: string): string {
@@ -97,4 +132,65 @@ function escapeHtml(value: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function renderIndexHtml(index: {
+  latest: {
+    title: string
+    date: string
+    generatedAt: string
+    summary: AuditReport['summary']
+    files: { markdown: string; json: string; html: string; manifest: string }
+  }
+  reports: Array<{
+    title: string
+    date: string
+    generatedAt: string
+    summary: AuditReport['summary']
+    files: { markdown: string; json: string; html: string; manifest: string }
+  }>
+}): string {
+  const rows = index.reports.map(report => [
+    '<tr>',
+    `<td>${escapeHtml(report.date)}</td>`,
+    `<td><a href="${escapeHtml(relativeReportPath(report.files.html))}">${escapeHtml(report.title)}</a></td>`,
+    `<td>${report.summary.stories}</td>`,
+    `<td>${report.summary.risky}</td>`,
+    `<td>${report.summary.suggestedContacts}</td>`,
+    `<td><a href="${escapeHtml(relativeReportPath(report.files.markdown))}">Markdown</a> · <a href="${escapeHtml(relativeReportPath(report.files.json))}">JSON</a></td>`,
+    '</tr>',
+  ].join('')).join('\n')
+  return [
+    '<!doctype html>',
+    '<html lang="zh-CN">',
+    '<head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<title>PMO Agent Reports</title>',
+    '<style>',
+    ':root{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}',
+    'body{margin:0;padding:32px;background:#f6f7f9;color:#1f2328}',
+    'main{max-width:1180px;margin:0 auto;background:#fff;border:1px solid #d8dee4;border-radius:8px;padding:28px}',
+    'h1{font-size:24px;margin:0 0 12px}',
+    'table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #d8dee4;padding:10px;text-align:left;vertical-align:top}th{font-size:13px;color:#57606a}',
+    'a{color:#0969da;text-decoration:none}a:hover{text-decoration:underline}',
+    '@media (prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}main{background:#161b22;border-color:#30363d}th,td{border-color:#30363d}th{color:#8b949e}a{color:#58a6ff}}',
+    '</style>',
+    '</head>',
+    '<body>',
+    '<main>',
+    '<h1>PMO Agent Reports</h1>',
+    '<table>',
+    '<thead><tr><th>日期</th><th>报告</th><th>需求</th><th>风险</th><th>建议沟通</th><th>文件</th></tr></thead>',
+    `<tbody>${rows}</tbody>`,
+    '</table>',
+    '</main>',
+    '</body>',
+    '</html>',
+    '',
+  ].join('\n')
+}
+
+function relativeReportPath(path: string): string {
+  return path.split('/').pop() ?? path
 }

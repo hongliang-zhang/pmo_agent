@@ -104,6 +104,8 @@ The local filesystem output is the primary Phase 1 delivery path while Feishu do
 - `reports/YYYY-MM-DD-pmo-audit-manifest.json`
 - `reports/latest-pmo-audit.md`
 - `reports/latest-pmo-audit.html`
+- `reports/index.html`
+- `reports/index.json`
 
 Create a Feishu document report after both Feishu Project MCP and `lark-mcp` OAuth are authorized:
 

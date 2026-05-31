@@ -57,9 +57,20 @@ describe('report output', () => {
       expect(manifest.date).toBe('2026-05-31')
       expect(manifest.files.markdown).toBe(artifacts.markdownPath)
       expect(manifest.files.html).toBe(artifacts.htmlPath)
+      expect(manifest.files.index).toBe(artifacts.indexPath)
+      expect(manifest.files.indexJson).toBe(artifacts.indexJsonPath)
       expect(manifest.files.latestHtml).toBe(artifacts.latestHtmlPath)
       expect(manifest.summary.risky).toBe(1)
       expect(manifest.generatedAt).toMatch(/T/)
+
+      const indexJson = JSON.parse(await readFile(artifacts.indexJsonPath, 'utf8'))
+      expect(indexJson.latest.date).toBe('2026-05-31')
+      expect(indexJson.reports[0].files.html).toBe(artifacts.htmlPath)
+
+      const indexHtml = await readFile(artifacts.indexPath, 'utf8')
+      expect(indexHtml).toContain('<title>PMO Agent Reports</title>')
+      expect(indexHtml).toContain('MAAS_平台 PMO 状态核查日报 2026-05-31')
+      expect(indexHtml).toContain('2026-05-31-pmo-audit.html')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

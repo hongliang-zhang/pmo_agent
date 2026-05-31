@@ -37,7 +37,7 @@ async function main() {
   const artifacts = await writeLocalReportArtifacts({ reportsDir: config.audit.reportsDir, date: args.date, markdown, report })
 
   if (args.dryRun || args.output === 'markdown') {
-    process.stdout.write(`${markdown}\n\nLocal report: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLocal HTML: ${artifacts.htmlPath}\nLatest report: ${artifacts.latestMarkdownPath}\nLatest HTML: ${artifacts.latestHtmlPath}\nManifest: ${artifacts.manifestPath}\n`)
+    process.stdout.write(`${markdown}\n\nLocal report: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLocal HTML: ${artifacts.htmlPath}\nLatest report: ${artifacts.latestMarkdownPath}\nLatest HTML: ${artifacts.latestHtmlPath}\nIndex: ${artifacts.indexPath}\nIndex JSON: ${artifacts.indexJsonPath}\nManifest: ${artifacts.manifestPath}\n`)
     return
   }
 
@@ -46,9 +46,9 @@ async function main() {
       command: process.env.LARK_MCP_COMMAND,
       args: parseOptionalArgs(process.env.LARK_MCP_ARGS),
     }).createDocument(markdown)
-    process.stdout.write(`Local report: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLocal HTML: ${artifacts.htmlPath}\nLatest report: ${artifacts.latestMarkdownPath}\nLatest HTML: ${artifacts.latestHtmlPath}\nManifest: ${artifacts.manifestPath}\nFeishu document: ${doc.url ?? doc.documentId ?? JSON.stringify(doc.raw)}\n`)
+    process.stdout.write(`Local report: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLocal HTML: ${artifacts.htmlPath}\nLatest report: ${artifacts.latestMarkdownPath}\nLatest HTML: ${artifacts.latestHtmlPath}\nIndex: ${artifacts.indexPath}\nIndex JSON: ${artifacts.indexJsonPath}\nManifest: ${artifacts.manifestPath}\nFeishu document: ${doc.url ?? doc.documentId ?? JSON.stringify(doc.raw)}\n`)
   } catch (error) {
-    process.stderr.write(`Local report was generated before Feishu document creation failed: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLocal HTML: ${artifacts.htmlPath}\nLatest report: ${artifacts.latestMarkdownPath}\nLatest HTML: ${artifacts.latestHtmlPath}\nManifest: ${artifacts.manifestPath}\n`)
+    process.stderr.write(`Local report was generated before Feishu document creation failed: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLocal HTML: ${artifacts.htmlPath}\nLatest report: ${artifacts.latestMarkdownPath}\nLatest HTML: ${artifacts.latestHtmlPath}\nIndex: ${artifacts.indexPath}\nIndex JSON: ${artifacts.indexJsonPath}\nManifest: ${artifacts.manifestPath}\n`)
     throw error
   }
 }
