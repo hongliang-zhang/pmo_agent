@@ -2,7 +2,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { writeLocalReport } from '../src/output/local.js'
+import { writeLocalReport, writeLocalReportArtifacts } from '../src/output/local.js'
+import type { AuditReport } from '../src/domain.js'
 import { createFeishuDocOutput, ensureMcpToolSucceeded, extractDocumentResult, explainFeishuDocSetupFailure, FeishuDocSetupError } from '../src/feishu/docs-output.js'
 
 describe('report output', () => {
@@ -13,6 +14,44 @@ describe('report output', () => {
 
       await expect(readFile(path, 'utf8')).resolves.toBe('# Report')
       expect(path).toContain('2026-05-31-pmo-audit.md')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('writes a complete filesystem artifact set for local delivery', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'pmo-artifacts-'))
+    const report: AuditReport = {
+      title: 'MAAS_平台 PMO 状态核查日报 2026-05-31',
+      date: '2026-05-31',
+      summary: { stories: 2, progressed: 1, risky: 1, incomplete: 1, suggestedContacts: 1 },
+      progressedStories: [],
+      riskyStories: [],
+      incompleteStories: [],
+      gitlabEvidence: [],
+      isolatedEvidence: [],
+      suggestedContacts: [],
+      noNeedToDisturb: [],
+    }
+    try {
+      const artifacts = await writeLocalReportArtifacts({
+        reportsDir: dir,
+        date: '2026-05-31',
+        markdown: '# Report',
+        report,
+      })
+
+      await expect(readFile(artifacts.markdownPath, 'utf8')).resolves.toBe('# Report')
+      await expect(readFile(artifacts.latestMarkdownPath, 'utf8')).resolves.toBe('# Report')
+
+      const json = JSON.parse(await readFile(artifacts.jsonPath, 'utf8'))
+      expect(json.summary.stories).toBe(2)
+
+      const manifest = JSON.parse(await readFile(artifacts.manifestPath, 'utf8'))
+      expect(manifest.date).toBe('2026-05-31')
+      expect(manifest.files.markdown).toBe(artifacts.markdownPath)
+      expect(manifest.summary.risky).toBe(1)
+      expect(manifest.generatedAt).toMatch(/T/)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

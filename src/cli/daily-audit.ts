@@ -8,7 +8,7 @@ import { FeishuProjectMcpClient } from '../feishu/project-mcp.js'
 import { collectGitLabEvidence } from '../gitlab/collector.js'
 import { GitLabClient } from '../gitlab/client.js'
 import { renderAuditMarkdown } from '../render/markdown.js'
-import { writeLocalReport } from '../output/local.js'
+import { writeLocalReportArtifacts } from '../output/local.js'
 import { checkLarkMcp } from '../diagnostics.js'
 
 async function main() {
@@ -34,10 +34,10 @@ async function main() {
 
   const report = buildAuditReport({ date: args.date, stories, evidence, now: new Date() })
   const markdown = renderAuditMarkdown(report)
-  const localPath = await writeLocalReport({ reportsDir: config.audit.reportsDir, date: args.date, markdown })
+  const artifacts = await writeLocalReportArtifacts({ reportsDir: config.audit.reportsDir, date: args.date, markdown, report })
 
   if (args.dryRun || args.output === 'markdown') {
-    process.stdout.write(`${markdown}\n\nLocal report: ${localPath}\n`)
+    process.stdout.write(`${markdown}\n\nLocal report: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLatest report: ${artifacts.latestMarkdownPath}\nManifest: ${artifacts.manifestPath}\n`)
     return
   }
 
@@ -46,9 +46,9 @@ async function main() {
       command: process.env.LARK_MCP_COMMAND,
       args: parseOptionalArgs(process.env.LARK_MCP_ARGS),
     }).createDocument(markdown)
-    process.stdout.write(`Local report: ${localPath}\nFeishu document: ${doc.url ?? doc.documentId ?? JSON.stringify(doc.raw)}\n`)
+    process.stdout.write(`Local report: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLatest report: ${artifacts.latestMarkdownPath}\nManifest: ${artifacts.manifestPath}\nFeishu document: ${doc.url ?? doc.documentId ?? JSON.stringify(doc.raw)}\n`)
   } catch (error) {
-    process.stderr.write(`Local report was generated before Feishu document creation failed: ${localPath}\n`)
+    process.stderr.write(`Local report was generated before Feishu document creation failed: ${artifacts.markdownPath}\nLocal JSON: ${artifacts.jsonPath}\nLatest report: ${artifacts.latestMarkdownPath}\nManifest: ${artifacts.manifestPath}\n`)
     throw error
   }
 }
