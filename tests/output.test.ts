@@ -44,12 +44,20 @@ describe('report output', () => {
       await expect(readFile(artifacts.markdownPath, 'utf8')).resolves.toBe('# Report')
       await expect(readFile(artifacts.latestMarkdownPath, 'utf8')).resolves.toBe('# Report')
 
+      const html = await readFile(artifacts.htmlPath, 'utf8')
+      expect(html).toContain('<!doctype html>')
+      expect(html).toContain('<title>MAAS_平台 PMO 状态核查日报 2026-05-31</title>')
+      expect(html).toContain('<pre># Report</pre>')
+      await expect(readFile(artifacts.latestHtmlPath, 'utf8')).resolves.toBe(html)
+
       const json = JSON.parse(await readFile(artifacts.jsonPath, 'utf8'))
       expect(json.summary.stories).toBe(2)
 
       const manifest = JSON.parse(await readFile(artifacts.manifestPath, 'utf8'))
       expect(manifest.date).toBe('2026-05-31')
       expect(manifest.files.markdown).toBe(artifacts.markdownPath)
+      expect(manifest.files.html).toBe(artifacts.htmlPath)
+      expect(manifest.files.latestHtml).toBe(artifacts.latestHtmlPath)
       expect(manifest.summary.risky).toBe(1)
       expect(manifest.generatedAt).toMatch(/T/)
     } finally {

@@ -10,7 +10,7 @@ The main object is a Feishu Project story in the `MAAS_平台` space. GitLab `de
 - Normalizes Feishu Project MCP story records into a stable `Story` model.
 - Matches GitLab evidence to stories by story id, story link, title keywords, branch text, commit/MR text, and owner hints.
 - Detects missing goal, owner, schedule, test plan, next step, stale status, failed pipeline, blocked MR, and delivery/status mismatch risks.
-- Renders a PMO audit report to the local filesystem under `reports/` as Markdown, JSON, a latest Markdown copy, and a manifest.
+- Renders a PMO audit report to the local filesystem under `reports/` as Markdown, JSON, browser-readable HTML, latest copies, and a manifest.
 - Can also create a Feishu document through `lark-mcp` after Feishu user OAuth and document scopes are valid.
 
 ## Setup
@@ -100,8 +100,10 @@ The local filesystem output is the primary Phase 1 delivery path while Feishu do
 
 - `reports/YYYY-MM-DD-pmo-audit.md`
 - `reports/YYYY-MM-DD-pmo-audit.json`
+- `reports/YYYY-MM-DD-pmo-audit.html`
 - `reports/YYYY-MM-DD-pmo-audit-manifest.json`
 - `reports/latest-pmo-audit.md`
+- `reports/latest-pmo-audit.html`
 
 Create a Feishu document report after both Feishu Project MCP and `lark-mcp` OAuth are authorized:
 
