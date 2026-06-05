@@ -336,6 +336,24 @@ describe('PMO action HTTP server', () => {
     }
   })
 
+  it('clears both PMO and Open WebUI cookies on logout', async () => {
+    const server = createPmoActionServer()
+    server.listen(0)
+    await once(server, 'listening')
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Expected tcp server address')
+    try {
+      const logout = await fetch(`http://127.0.0.1:${address.port}/logout`, { redirect: 'manual' })
+      expect(logout.status).toBe(302)
+      expect(logout.headers.get('location')).toBe('/login')
+      const setCookies = logout.headers.getSetCookie()
+      expect(setCookies.some(cookie => cookie.startsWith('pmo_session=') && cookie.includes('Max-Age=0'))).toBe(true)
+      expect(setCookies.some(cookie => cookie.startsWith('token=') && cookie.includes('Max-Age=0'))).toBe(true)
+    } finally {
+      server.close()
+    }
+  })
+
   it('serves the PMO web app and app APIs behind HTTP basic auth', async () => {
     const reportsDir = await mkdtemp(join(tmpdir(), 'pmo-web-app-'))
     await writeFile(join(reportsDir, '2026-06-02-pmo-audit.json'), JSON.stringify({

@@ -43,7 +43,10 @@ export function createPmoActionServer(options: {
       }
       if (req.method === 'GET' && req.url === '/logout') {
         res.writeHead(302, {
-          'Set-Cookie': sessionCookie('', { maxAge: 0 }),
+          'Set-Cookie': [
+            sessionCookie('', { maxAge: 0 }),
+            openWebUiTokenCookie('', { maxAge: 0 }),
+          ],
           Location: '/login',
         })
         res.end()
@@ -591,6 +594,10 @@ function parseCookies(header: string | undefined): Record<string, string> {
 
 function sessionCookie(value: string, options: { maxAge: number }): string {
   return `pmo_session=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${options.maxAge}`
+}
+
+function openWebUiTokenCookie(value: string, options: { maxAge: number }): string {
+  return `token=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${options.maxAge}`
 }
 
 function safeNextUrl(value: string): string {
