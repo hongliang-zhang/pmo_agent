@@ -71,6 +71,10 @@ export function createPmoActionServer(options: {
         }
         return
       }
+      if (req.method === 'POST' && req.url === '/api/v1/auths/signin') {
+        await handleOpenWebUiTrustedSignin(req, res)
+        return
+      }
       if (!isAuthorized(req)) {
         sendUnauthorized(res)
         return
@@ -460,28 +464,53 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<v
 }
 
 async function createOpenWebUiSessionCookies(user: string): Promise<string[]> {
+  const response = await signInOpenWebUiWithTrustedHeaders(user).catch(() => undefined)
+  if (!response?.ok) return []
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] }
+  if (headers.getSetCookie) return headers.getSetCookie()
+  const cookie = response.headers.get('set-cookie')
+  return cookie ? [cookie] : []
+}
+
+async function handleOpenWebUiTrustedSignin(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const user = getAuthorizedEmail(req)
+  if (!user) {
+    sendJson(res, 401, { detail: 'Not authenticated' })
+    return
+  }
+
+  const response = await signInOpenWebUiWithTrustedHeaders(user).catch(error => {
+    process.stderr.write(`[pmo-auth] openwebui_trusted_signin_failed ${JSON.stringify({ message: error instanceof Error ? error.message : String(error) })}\n`)
+    return undefined
+  })
+  if (!response) {
+    sendJson(res, 502, { detail: 'Open WebUI trusted signin failed' })
+    return
+  }
+
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] }
+  const setCookies = headers.getSetCookie ? headers.getSetCookie() : response.headers.get('set-cookie') ? [response.headers.get('set-cookie')!] : []
+  res.writeHead(response.status, {
+    'Content-Type': response.headers.get('content-type') ?? 'application/json',
+    ...(setCookies.length ? { 'Set-Cookie': setCookies } : {}),
+  })
+  res.end(await response.text())
+}
+
+async function signInOpenWebUiWithTrustedHeaders(user: string): Promise<Response> {
   const baseUrl = process.env.PMO_OPEN_WEBUI_INTERNAL_URL
-  if (!baseUrl) return []
+  if (!baseUrl) throw new Error('PMO_OPEN_WEBUI_INTERNAL_URL is not configured')
   const trustedIdentity = openWebUiTrustedIdentity(user)
 
-  try {
-    const response = await fetch(new URL('/api/v1/auths/signin', baseUrl), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Forwarded-Email': trustedIdentity.email,
-        'X-Forwarded-User': trustedIdentity.name,
-      },
-      body: JSON.stringify({ email: 'trusted-header@example.invalid', password: 'trusted-header' }),
-    })
-    if (!response.ok) return []
-    const headers = response.headers as Headers & { getSetCookie?: () => string[] }
-    if (headers.getSetCookie) return headers.getSetCookie()
-    const cookie = response.headers.get('set-cookie')
-    return cookie ? [cookie] : []
-  } catch {
-    return []
-  }
+  return fetch(new URL('/api/v1/auths/signin', baseUrl), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Forwarded-Email': trustedIdentity.email,
+      'X-Forwarded-User': trustedIdentity.name,
+    },
+    body: JSON.stringify({ email: 'trusted-header@example.invalid', password: 'trusted-header' }),
+  })
 }
 
 function openWebUiTrustedIdentity(user: string): { email: string; name: string } {

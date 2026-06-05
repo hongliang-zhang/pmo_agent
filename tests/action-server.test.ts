@@ -336,6 +336,72 @@ describe('PMO action HTTP server', () => {
     }
   })
 
+  it('handles browser Open WebUI signin posts through the PMO trusted session', async () => {
+    const previousAuth = process.env.PMO_HTTP_BASIC_AUTH
+    const previousSecret = process.env.PMO_SESSION_SECRET
+    const previousOpenWebUiUrl = process.env.PMO_OPEN_WEBUI_INTERNAL_URL
+    process.env.PMO_HTTP_BASIC_AUTH = 'maas:test-password'
+    process.env.PMO_SESSION_SECRET = 'test-session-secret'
+
+    const openWebUiSigninCalls: { email?: string; name?: string }[] = []
+    const openWebUi = createServer((req, res) => {
+      openWebUiSigninCalls.push({
+        email: String(req.headers['x-forwarded-email'] ?? ''),
+        name: String(req.headers['x-forwarded-user'] ?? ''),
+      })
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': 'token=open-webui-session; Path=/; HttpOnly; SameSite=Lax',
+      })
+      res.end(JSON.stringify({ email: 'maas@z.ai', token: 'open-webui-session' }))
+    })
+    openWebUi.listen(0)
+    await once(openWebUi, 'listening')
+    const openWebUiAddress = openWebUi.address()
+    if (!openWebUiAddress || typeof openWebUiAddress === 'string') throw new Error('Expected tcp server address')
+    process.env.PMO_OPEN_WEBUI_INTERNAL_URL = `http://127.0.0.1:${openWebUiAddress.port}`
+
+    const server = createPmoActionServer()
+    server.listen(0)
+    await once(server, 'listening')
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Expected tcp server address')
+    try {
+      const login = await fetch(`http://127.0.0.1:${address.port}/login`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ email: 'maas', password: 'test-password', next: '/app' }),
+      })
+      const cookie = login.headers.getSetCookie().find(value => value.startsWith('pmo_session='))
+      expect(cookie).toBeTruthy()
+
+      const signin = await fetch(`http://127.0.0.1:${address.port}/api/v1/auths/signin`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'content-type': 'application/json',
+          cookie: cookie ?? '',
+        },
+        body: JSON.stringify({ email: '', password: '' }),
+      })
+
+      expect(signin.status).toBe(200)
+      expect(signin.headers.getSetCookie().some(value => value.startsWith('token=open-webui-session'))).toBe(true)
+      await expect(signin.json()).resolves.toMatchObject({ email: 'maas@z.ai' })
+      expect(openWebUiSigninCalls.at(-1)).toEqual({ email: 'maas@z.ai', name: 'maas' })
+    } finally {
+      server.close()
+      openWebUi.close()
+      if (previousAuth === undefined) delete process.env.PMO_HTTP_BASIC_AUTH
+      else process.env.PMO_HTTP_BASIC_AUTH = previousAuth
+      if (previousSecret === undefined) delete process.env.PMO_SESSION_SECRET
+      else process.env.PMO_SESSION_SECRET = previousSecret
+      if (previousOpenWebUiUrl === undefined) delete process.env.PMO_OPEN_WEBUI_INTERNAL_URL
+      else process.env.PMO_OPEN_WEBUI_INTERNAL_URL = previousOpenWebUiUrl
+    }
+  })
+
   it('clears both PMO and Open WebUI cookies on logout', async () => {
     const server = createPmoActionServer()
     server.listen(0)
