@@ -19,6 +19,18 @@ export interface AppConfig {
     timezone: string
     reportsDir: string
   }
+  models: {
+    provider: 'z.ai'
+    apiKey?: string
+    daily: ModelEndpointConfig
+    risk: ModelEndpointConfig
+  }
+}
+
+export interface ModelEndpointConfig {
+  protocol: 'openai' | 'anthropic'
+  baseUrl: string
+  model: string
 }
 
 export interface LoadConfigOptions {
@@ -50,12 +62,26 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<AppCo
       spaceName: env.FEISHU_PROJECT_SPACE_NAME ?? 'MAAS_平台',
       spaceUrl: env.FEISHU_PROJECT_SPACE_URL ?? 'https://project.feishu.cn/7358164361912909827_1719375156/story/homepage',
       projectKey: env.FEISHU_PROJECT_PROJECT_KEY ?? env.FEISHU_PROJECT_KEY ?? extractFeishuProjectSimpleName(env.FEISHU_PROJECT_SPACE_URL),
-      activeStatuses: splitList(env.FEISHU_PROJECT_ACTIVE_STATUSES) ?? ['开发阶段', '测试阶段', '上线阶段', '进行中'],
+      activeStatuses: splitList(env.FEISHU_PROJECT_ACTIVE_STATUSES) ?? ['技术方案输出', '开发阶段', '测试阶段', '上线阶段', '进行中'],
       headers: parseHeaderConfig(env),
     },
     audit: {
       timezone: env.PMO_TIMEZONE ?? 'Asia/Shanghai',
       reportsDir: env.PMO_REPORTS_DIR ?? 'reports',
+    },
+    models: {
+      provider: 'z.ai',
+      apiKey: env.ZAI_API_KEY,
+      daily: {
+        protocol: 'openai',
+        baseUrl: env.ZAI_OPENAI_BASE_URL ?? 'https://open.bigmodel.cn/api/coding/paas/v4',
+        model: env.PMO_DAILY_MODEL ?? 'glm-5-turbo',
+      },
+      risk: {
+        protocol: 'anthropic',
+        baseUrl: env.ZAI_ANTHROPIC_BASE_URL ?? 'https://open.bigmodel.cn/api/anthropic',
+        model: env.PMO_RISK_MODEL ?? 'glm-5.1',
+      },
     },
   }
 }
@@ -93,17 +119,26 @@ function splitList(value: string | undefined): string[] | undefined {
 export async function readGitLabTokenFromGitCredential(): Promise<string | undefined> {
   return new Promise(resolve => {
     const child = spawn('git', ['credential', 'fill'], { stdio: ['pipe', 'pipe', 'ignore'] })
+    let settled = false
+    const finish = (token: string | undefined) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(token)
+    }
     let stdout = ''
     const timer = setTimeout(() => {
       child.kill()
-      resolve(undefined)
+      finish(undefined)
     }, 5_000)
     child.stdout.on('data', chunk => { stdout += String(chunk) })
     child.on('close', () => {
-      clearTimeout(timer)
-      resolve(stdout.match(/^password=(.+)$/m)?.[1])
+      finish(stdout.match(/^password=(.+)$/m)?.[1])
     })
-    child.stdin.end('protocol=https\nhost=dev.aminer.cn\n\n')
+    child.on('error', () => {
+      finish(undefined)
+    })
+    child.stdin?.end('protocol=https\nhost=dev.aminer.cn\n\n')
   })
 }
 

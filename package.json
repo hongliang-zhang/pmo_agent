@@ -11,7 +11,21 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "pmo:audit": "tsx src/cli/daily-audit.ts",
-    "pmo:doctor": "tsx src/cli/doctor.ts"
+    "pmo:doctor": "tsx src/cli/doctor.ts",
+    "pmo:agent-contract": "tsx src/cli/agent-contract.ts",
+    "pmo:build-state": "tsx src/cli/build-state.ts",
+    "pmo:action": "tsx src/cli/action-bridge.ts",
+    "pmo:serve-actions": "tsx src/cli/serve-actions.ts",
+    "pmo:worker": "tsx src/cli/worker.ts",
+    "pmo:prod": "tsx src/cli/production.ts",
+    "pmo:feishu-openapi-smoke": "tsx src/cli/feishu-openapi-smoke.ts",
+    "pmo:feishu-project-fields": "tsx src/cli/feishu-project-fields.ts",
+    "pmo:model-smoke": "tsx src/cli/model-smoke.ts",
+    "pmo:drafts": "tsx src/cli/drafts.ts",
+    "pmo:project-updates": "tsx src/cli/project-updates.ts",
+    "pmo:approvals": "tsx src/cli/approvals.ts",
+    "pmo:acceptance": "tsx src/cli/acceptance.ts",
+    "pmo:smoke-local": "tsx src/cli/smoke-local.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

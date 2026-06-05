@@ -1,0 +1,6 @@
+{
+  "docs/pmo-agent-requirements-v2.zh-CN.md": {
+    "title": "PMO Agent 需求文档 v2",
+    "content": "目标：建立 MAAS_平台需求状态核查能力。\n测试计划：覆盖 CLI dry-run、单测、GitLab smoke test。\n下一步：接入飞书项目 MCP 并验证日报输出。"
+  }
+}

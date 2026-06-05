@@ -96,6 +96,95 @@ describe('Feishu Project MCP adapter', () => {
     expect(mql).toContain("WHERE `work_item_status` in ('开发阶段','测试阶段')")
     expect(mql).toContain('ORDER BY `updated_at` DESC')
   })
+
+  it('splits multi-status story list queries to avoid MCP top-N truncation', async () => {
+    const mqls: string[] = []
+    const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body))
+      if (body.params?.name === 'search_project_info') {
+        return jsonResponse({
+          result: {
+            content: [{ type: 'text', text: JSON.stringify({ projects: [{ project_key: 'project-key', name: 'MAAS平台', simple_name: 'space-simple' }] }) }],
+          },
+        })
+      }
+      mqls.push(body.params?.arguments?.mql)
+      const isDev = String(body.params?.arguments?.mql).includes("'开发阶段'")
+      return jsonResponse({
+        result: {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              data: {
+                1: [{
+                  moql_field_list: [
+                    { key: 'work_item_id', value: { long_value: isDev ? 1 : 2 } },
+                    { key: 'name', value: { string_value: isDev ? '开发需求' : '方案需求' } },
+                    { key: 'work_item_status', value: { key_label_value_list: [{ label: isDev ? '开发阶段' : '技术方案输出' }] } },
+                  ],
+                }],
+              },
+            }),
+          }],
+        },
+      })
+    })
+    const client = new FeishuProjectMcpClient({
+      mcpUrl: 'https://project.feishu.cn/mcp_server/v1',
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    })
+
+    const stories = await client.listStories('MAAS_平台', undefined, ['技术方案输出', '开发阶段'])
+
+    expect(mqls).toHaveLength(2)
+    expect(mqls[0]).toContain("WHERE `work_item_status` in ('技术方案输出')")
+    expect(mqls[1]).toContain("WHERE `work_item_status` in ('开发阶段')")
+    expect(stories.map(story => story.title)).toEqual(['方案需求', '开发需求'])
+  })
+
+  it('wraps writeback and project user lookup tools with stable methods', async () => {
+    const calls: any[] = []
+    const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body))
+      calls.push(body.params)
+      if (body.params?.name === 'search_user_info') {
+        return jsonResponse({
+          result: {
+            content: [{ type: 'text', text: JSON.stringify({ users: [{ name_cn: '张鸿亮', name_en: 'Hongliang Zhang', email: 'user@aminer.cn', user_key: '7526', lark_user_id: '7526-lark' }] }) }],
+          },
+        })
+      }
+      if (body.params?.name === 'list_workitem_field_config') {
+        return jsonResponse({
+          result: {
+            content: [{ type: 'text', text: JSON.stringify({ list: [{ field_key: 'description', field_name: '描述' }, { field_key: 'field_7f3085', field_name: '测试方式' }] }) }],
+          },
+        })
+      }
+      return jsonResponse({ result: { content: [{ type: 'text', text: 'success' }] } })
+    })
+    const client = new FeishuProjectMcpClient({
+      mcpUrl: 'https://project.feishu.cn/mcp_server/v1',
+      headers: { 'X-Mcp-Token': 'project-token' },
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    })
+
+    await client.transitionNode({ projectKey: 'space', workItemId: '7005303241', nodeId: 'state_34' })
+    await client.addComment({ projectKey: 'space', workItemId: '7005303241', content: 'PMO Agent 写回验证' })
+    await client.updateFields({ projectKey: 'space', workItemId: '7005303241', fields: [{ fieldKey: 'field_next', fieldValue: '补齐测试' }] })
+    const users = await client.searchUsers({ projectKey: 'space', userKeys: ['user@aminer.cn'] })
+    const fields = await client.listFieldConfigs({ projectKey: 'space', workItemType: 'story', fieldQuery: '测试' })
+
+    expect(calls.map(call => call.name)).toEqual(['transition_node', 'add_comment', 'update_field', 'search_user_info', 'list_workitem_field_config'])
+    expect(calls[0]?.arguments).toMatchObject({ project_key: 'space', work_item_id: '7005303241', node_id: 'state_34', action: 'confirm' })
+    expect(calls[1]?.arguments).toMatchObject({ content: 'PMO Agent 写回验证' })
+    expect(calls[2]?.arguments).toMatchObject({ fields: [{ field_key: 'field_next', field_value: '补齐测试' }] })
+    expect(users[0]).toMatchObject({ name: '张鸿亮', email: 'user@aminer.cn', userKey: '7526', larkUserId: '7526-lark' })
+    expect(fields).toMatchObject([
+      { key: 'description', name: '描述', raw: { field_key: 'description', field_name: '描述' } },
+      { key: 'field_7f3085', name: '测试方式', raw: { field_key: 'field_7f3085', field_name: '测试方式' } },
+    ])
+  })
 })
 
 function jsonResponse(data: unknown): Response {

@@ -3,3 +3,11 @@ dist/
 reports/
 .env
 .env.local
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+docs/.zai/
+.deploy_tmp/

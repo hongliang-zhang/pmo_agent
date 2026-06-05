@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { FeishuOpenApiClient, type FeishuDocxDocumentResult } from './openapi.js'
 
 export class FeishuDocSetupError extends Error {
   constructor(reason: string) {
@@ -15,16 +16,31 @@ export interface FeishuDocOutput {
   createDocument(markdown: string): Promise<{ url?: string; documentId?: string; raw: unknown }>
 }
 
+export interface FeishuOpenApiDocClient {
+  createDocxDocumentFromMarkdown(input: { title: string; markdown: string; folderToken?: string }): Promise<FeishuDocxDocumentResult>
+}
+
 export function createFeishuDocOutput(options: {
   codexConfigPath?: string
   command?: string
   args?: string[]
+  env?: NodeJS.ProcessEnv | Record<string, string | undefined>
+  openApiClient?: FeishuOpenApiDocClient
 } = {}): FeishuDocOutput {
+  const env = options.env ?? process.env
+  if (env.PMO_FEISHU_DOC_OUTPUT_MODE === 'openapi') {
+    return createFeishuOpenApiDocOutput({
+      client: options.openApiClient,
+      title: env.PMO_FEISHU_DOC_TITLE,
+      folderToken: env.PMO_FEISHU_DOC_FOLDER_TOKEN,
+      webBaseUrl: env.PMO_FEISHU_DOC_WEB_BASE_URL,
+    })
+  }
   return {
     async createDocument(markdown: string) {
       const launch = options.command
         ? { command: options.command, args: options.args ?? [] }
-        : await readLarkMcpLaunch(options.codexConfigPath ?? join(homedir(), '.codex/config.toml'))
+        : defaultLarkMcpLaunchFromEnv(env) ?? await readLarkMcpLaunch(options.codexConfigPath ?? join(homedir(), '.codex/config.toml'))
       if (!launch) throw new FeishuDocSetupError('lark-mcp server entry not found')
       const raw = await callStdioMcpTool(launch.command, launch.args, 'docx_builtin_import', {
         data: { file_name: `MAAS_平台 PMO 状态核查日报.md`, markdown },
@@ -41,9 +57,51 @@ export function createFeishuDocOutput(options: {
   }
 }
 
+export function createFeishuOpenApiDocOutput(options: {
+  client?: FeishuOpenApiDocClient
+  title?: string
+  folderToken?: string
+  webBaseUrl?: string
+} = {}): FeishuDocOutput {
+  return {
+    async createDocument(markdown: string) {
+      const client = options.client ?? new FeishuOpenApiClient()
+      const result = await client.createDocxDocumentFromMarkdown({
+        title: options.title ?? 'MAAS_平台 PMO 状态核查日报',
+        markdown,
+        folderToken: options.folderToken,
+      })
+      return {
+        raw: result.raw,
+        documentId: result.documentId,
+        url: result.url ?? buildDocumentUrl(options.webBaseUrl, result.documentId),
+      }
+    },
+  }
+}
+
+function buildDocumentUrl(webBaseUrl: string | undefined, documentId: string): string | undefined {
+  if (!webBaseUrl) return undefined
+  return `${webBaseUrl.replace(/\/$/, '')}/${encodeURIComponent(documentId)}`
+}
+
 export function ensureMcpToolSucceeded(raw: unknown): void {
   if (raw && typeof raw === 'object' && 'isError' in raw && (raw as any).isError) {
     throw new FeishuDocSetupError(collectText(raw))
+  }
+  const text = collectText(raw)
+  if (/Document import failed|Current user_access_token is invalid or expired/i.test(text)) {
+    throw new FeishuDocSetupError(text)
+  }
+}
+
+export function defaultLarkMcpLaunchFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env): { command: string; args: string[] } | undefined {
+  const appId = env.FEISHU_APP_ID ?? env.LARK_APP_ID
+  const appSecret = env.FEISHU_APP_SECRET ?? env.LARK_APP_SECRET
+  if (!appId || !appSecret) return undefined
+  return {
+    command: 'npx',
+    args: ['-y', '@larksuiteoapi/lark-mcp', 'mcp', '-a', appId, '-s', appSecret, '--oauth'],
   }
 }
 
@@ -52,7 +110,7 @@ export function explainFeishuDocSetupFailure(reason: string): string {
     const url = reason.match(/https:\/\/open\.feishu\.cn\/app\/[^\s"',}]+\/auth[^\s"',}]*/)?.[0]
     return [
       'Feishu app permissions are missing for document creation.',
-      'Add a user-identity document permission such as docs:doc or drive:drive, publish/approve the permission change, then rerun lark-mcp login so the refreshed token includes the new scope.',
+      'Add a user-identity document permission such as docx:document, docs:doc, or drive:drive, publish/approve the permission change, then rerun lark-mcp login with --scope "offline_access docx:document drive:drive docs:doc" so the refreshed token includes the new scope.',
       url ? `Permission page: ${url}.` : '',
       `Raw error: ${reason}.`,
     ].filter(Boolean).join(' ')

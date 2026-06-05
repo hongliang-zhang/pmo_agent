@@ -3,7 +3,9 @@ export interface CliArgs {
   dryRun: boolean
   output: 'markdown' | 'feishu-doc'
   storiesFixture?: string
+  docsFixture?: string
   maxProjects?: number
+  enrichContext: boolean
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -11,6 +13,7 @@ export function parseArgs(argv: string[]): CliArgs {
     date: todayInChina(),
     dryRun: false,
     output: 'markdown',
+    enrichContext: false,
   }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -22,6 +25,8 @@ export function parseArgs(argv: string[]): CliArgs {
       if (value !== 'markdown' && value !== 'feishu-doc') throw new Error(`Invalid --output '${value}', expected markdown or feishu-doc`)
       args.output = value
     } else if (arg === '--stories-fixture') args.storiesFixture = requiredValue(argv, ++i, '--stories-fixture')
+    else if (arg === '--docs-fixture') args.docsFixture = requiredValue(argv, ++i, '--docs-fixture')
+    else if (arg === '--enrich-context') args.enrichContext = true
     else if (arg === '--max-projects') args.maxProjects = Number(requiredValue(argv, ++i, '--max-projects'))
     else throw new Error(`Unknown argument '${arg}'`)
   }

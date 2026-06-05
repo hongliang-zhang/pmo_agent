@@ -93,7 +93,14 @@ function normalizePerson(raw: any): PersonRef | undefined {
   if (typeof raw === 'string') return { name: raw }
   const name = raw.name ?? raw.display_name ?? raw.username ?? raw.email
   if (!name) return undefined
-  return { name: String(name), email: raw.email, username: raw.username }
+  return {
+    name: String(name),
+    email: raw.email,
+    username: raw.username,
+    userKey: raw.user_key ?? raw.userKey ?? raw.key,
+    larkUserId: raw.lark_user_id ?? raw.larkUserId,
+    openId: raw.open_id ?? raw.openId,
+  }
 }
 
 function normalizeDocs(raw: unknown): LinkedDoc[] {
@@ -114,6 +121,22 @@ interface FeishuProjectMcpClientOptions {
   storyListTool?: string
 }
 
+export interface FeishuProjectUser {
+  name: string
+  email?: string
+  userKey?: string
+  larkUserId?: string
+  openId?: string
+  raw: unknown
+}
+
+export interface FeishuProjectFieldConfig {
+  key: string
+  name: string
+  type?: string
+  raw: unknown
+}
+
 export class FeishuProjectMcpClient {
   private readonly mcpUrl: string
   private readonly headers: Record<string, string>
@@ -131,17 +154,97 @@ export class FeishuProjectMcpClient {
     try {
       const project = await this.resolveProject(spaceName, projectKeyHint)
       const toolName = this.storyListTool ?? 'search_by_mql'
-      const result = await this.callTool(toolName, {
-        project_key: project.projectKey,
-        mql: storyListMql(project.name, activeStatuses),
-        group_pagination_list: [{ page_num: 1, page_size: 100 }],
-      })
-      const rows = extractRows(result)
+      const rows: any[] = []
+      const seen = new Set<string>()
+      const pageSize = 100
+      const statusQueries = activeStatuses.length > 1 ? activeStatuses.map(status => [status]) : [activeStatuses]
+      for (const statuses of statusQueries) {
+        for (let pageNum = 1; pageNum <= 10; pageNum += 1) {
+          const result = await this.callTool(toolName, {
+            project_key: project.projectKey,
+            mql: storyListMql(project.name, statuses),
+            group_pagination_list: [{ page_num: pageNum, page_size: pageSize }],
+          })
+          const pageRows = extractRows(result)
+          let added = 0
+          for (const row of pageRows) {
+            const story = normalizeStoryFromMql(row, project.simpleName)
+            if (!story.id || seen.has(story.id)) continue
+            seen.add(story.id)
+            rows.push(row)
+            added += 1
+          }
+          if (pageRows.length < pageSize || added === 0) break
+        }
+      }
       return rows.map(row => normalizeStoryFromMql(row, project.simpleName)).filter(story => story.id && story.title)
     } catch (error) {
       if (error instanceof FeishuProjectSetupError) throw error
       throw new FeishuProjectSetupError(error instanceof Error ? error.message : String(error))
     }
+  }
+
+  async addComment(input: { projectKey: string; workItemId: string; content: string }): Promise<unknown> {
+    return this.callTool('add_comment', {
+      project_key: input.projectKey,
+      work_item_id: input.workItemId,
+      content: input.content,
+    })
+  }
+
+  async updateFields(input: { projectKey: string; workItemId: string; fields: Array<{ fieldKey: string; fieldValue: string }> }): Promise<unknown> {
+    return this.callTool('update_field', {
+      project_key: input.projectKey,
+      work_item_id: input.workItemId,
+      fields: input.fields.map(field => ({
+        field_key: field.fieldKey,
+        field_value: field.fieldValue,
+      })),
+    })
+  }
+
+  async transitionNode(input: { projectKey: string; workItemId: string; nodeId: string; action?: 'confirm' | 'rollback'; rollbackReason?: string }): Promise<unknown> {
+    return this.callTool('transition_node', {
+      project_key: input.projectKey,
+      work_item_id: input.workItemId,
+      node_id: input.nodeId,
+      action: input.action ?? 'confirm',
+      rollback_reason: input.rollbackReason,
+    })
+  }
+
+  async getWorkItemBrief(input: { projectKey: string; workItemId: string }): Promise<unknown> {
+    return this.callTool('get_workitem_brief', {
+      project_key: input.projectKey,
+      work_item_id: input.workItemId,
+    })
+  }
+
+  async searchUsers(input: { projectKey?: string; userKeys: string[] }): Promise<FeishuProjectUser[]> {
+    const result = await this.callTool('search_user_info', {
+      project_key: input.projectKey,
+      user_keys: input.userKeys,
+    })
+    return extractUserRows(result).map(normalizeProjectUser).filter(user => user.name)
+  }
+
+  async listFieldConfigs(input: {
+    projectKey: string
+    workItemType: string
+    fieldQuery?: string
+    fieldKeys?: string[]
+    fieldTypes?: string[]
+    pageNum?: number
+  }): Promise<FeishuProjectFieldConfig[]> {
+    const result = await this.callTool('list_workitem_field_config', {
+      project_key: input.projectKey,
+      work_item_type: input.workItemType,
+      page_num: input.pageNum ?? 1,
+      ...(input.fieldQuery ? { field_query: input.fieldQuery } : {}),
+      ...(input.fieldKeys ? { field_keys: input.fieldKeys } : {}),
+      ...(input.fieldTypes ? { field_types: input.fieldTypes } : {}),
+    })
+    return extractFieldConfigRows(result).map(normalizeFieldConfig).filter(field => field.key && field.name)
   }
 
   private async resolveProject(spaceName: string, projectKeyHint?: string): Promise<{ projectKey: string; name: string; simpleName?: string }> {
@@ -201,7 +304,7 @@ export function storyListMql(projectName: string, activeStatuses: string[] = [])
   return [
     'SELECT `work_item_id`, `name`, `work_item_status`, `updated_at`, `schedule`, `priority`,',
     '`current_status_operator`, `owner`, `wiki`, `field_0bdd58`, `field_a0719a`, `field_9afbaa`, `field_eba98f`, `description`',
-    `FROM \`${projectName}\`.\`需求\`${where} ORDER BY \`updated_at\` DESC LIMIT 100`,
+    `FROM \`${projectName}\`.\`需求\`${where} ORDER BY \`updated_at\` DESC`,
   ].join(' ')
 }
 
@@ -247,6 +350,56 @@ function extractProjectRows(result: any): any[] {
   })
 }
 
+function extractUserRows(result: any): any[] {
+  const content = result?.content
+  if (Array.isArray(result?.users)) return result.users
+  if (Array.isArray(result?.items)) return result.items
+  if (Array.isArray(result?.list)) return result.list
+  if (!Array.isArray(content)) return []
+  return content.flatMap((item: any) => {
+    if (item.type !== 'text') return []
+    const parsed = safeJsonParse(item.text)
+    if (!parsed) return []
+    if (Array.isArray(parsed)) return parsed
+    return parsed.users ?? parsed.list ?? parsed.items ?? []
+  })
+}
+
+function extractFieldConfigRows(result: any): any[] {
+  const content = result?.content
+  if (Array.isArray(result?.fields)) return result.fields
+  if (Array.isArray(result?.list)) return result.list
+  if (Array.isArray(result?.items)) return result.items
+  if (!Array.isArray(content)) return []
+  return content.flatMap((item: any) => {
+    if (item.type !== 'text' || !String(item.text).trim().startsWith('{')) return []
+    const parsed = safeJsonParse(item.text)
+    if (!parsed) return []
+    if (Array.isArray(parsed)) return parsed
+    return parsed.list ?? parsed.fields ?? parsed.items ?? []
+  })
+}
+
+function normalizeProjectUser(raw: any): FeishuProjectUser {
+  return {
+    name: String(raw.name_cn ?? raw.cn_name ?? raw.name ?? raw.name_en ?? raw.en_name ?? raw.email ?? raw.user_key ?? raw.key ?? ''),
+    email: raw.email,
+    userKey: raw.user_key ?? raw.userKey ?? raw.key,
+    larkUserId: raw.lark_user_id ?? raw.larkUserId,
+    openId: raw.open_id ?? raw.openId,
+    raw,
+  }
+}
+
+function normalizeFieldConfig(raw: any): FeishuProjectFieldConfig {
+  return {
+    key: String(raw.field_key ?? raw.key ?? ''),
+    name: String(raw.field_name ?? raw.name ?? raw.label ?? ''),
+    type: raw.field_type_key ?? raw.type_key ?? raw.type,
+    raw,
+  }
+}
+
 function safeJsonParse(text: string): any | undefined {
   try {
     return JSON.parse(text)
@@ -282,6 +435,9 @@ function normalizeMqlUser(user: any): PersonRef | undefined {
     name: user.name_cn ?? user.name_en ?? user.email ?? user.user_key,
     email: user.email,
     username: user.user_key,
+    userKey: user.user_key,
+    larkUserId: user.lark_user_id,
+    openId: user.open_id,
   }
 }
 

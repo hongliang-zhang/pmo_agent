@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PMO Agent Web UI 参考调研</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-2: #f9fafb;
+      --text: #17202a;
+      --muted: #657282;
+      --line: #dfe4ea;
+      --blue: #2563eb;
+      --green: #0f9f6e;
+      --amber: #d97706;
+      --red: #dc2626;
+      --violet: #6d5dfc;
+      --shadow: 0 20px 60px rgba(17, 24, 39, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .shell {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 32px 24px 72px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+      gap: 24px;
+      align-items: stretch;
+      margin-bottom: 28px;
+    }
+
+    .hero-copy, .hero-card, .section, .reference-card, .concept-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-copy { padding: 34px; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 12px 0 14px;
+      font-size: 42px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 25px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    p { margin: 0 0 12px; }
+
+    .lead {
+      color: var(--muted);
+      font-size: 17px;
+      max-width: 840px;
+    }
+
+    .hero-card {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .score {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .score b {
+      display: block;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .score span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 22px 0 0;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #eef4ff;
+      color: #1d4ed8;
+      font-size: 13px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .section {
+      padding: 28px;
+      margin-top: 24px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .section-header p {
+      color: var(--muted);
+      max-width: 760px;
+    }
+
+    .decision {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .decision-box {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px;
+      background: var(--panel-2);
+    }
+
+    .decision-box strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .reference-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .reference-card {
+      overflow: hidden;
+      box-shadow: none;
+    }
+
+    .reference-body { padding: 18px; }
+
+    .reference-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0;
+    }
+
+    .tag {
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .mock-shot {
+      min-height: 230px;
+      padding: 14px;
+      background: #eef2f7;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .real-shot {
+      position: relative;
+      height: 260px;
+      overflow: hidden;
+      border-radius: 10px;
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      background: #fff;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
+    }
+
+    .real-shot img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top center;
+      display: block;
+    }
+
+    .real-shot.contain img {
+      object-fit: contain;
+      background: #fff;
+    }
+
+    .shot-source {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      max-width: calc(100% - 20px);
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.76);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 650;
+      backdrop-filter: blur(8px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .product-ui {
+      height: 210px;
+      border-radius: 10px;
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      background: #fff;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
+    }
+
+    .product-ui .rail {
+      background: #111827;
+      padding: 12px 10px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .rail span {
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.35);
+    }
+
+    .product-main {
+      padding: 12px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+    }
+
+    .bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .bar div {
+      height: 10px;
+      border-radius: 999px;
+      background: #e5e7eb;
+    }
+
+    .bar div:first-child { width: 34%; background: #c7d2fe; }
+    .bar div:nth-child(2) { width: 18%; }
+    .bar div:nth-child(3) { width: 24%; }
+
+    .chat-layout {
+      display: grid;
+      grid-template-columns: 1fr 120px;
+      gap: 10px;
+      height: 100%;
+    }
+
+    .bubble-list, .panel-stack, .board, .table-lines {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .bubble, .mini-card {
+      border: 1px solid #e5e7eb;
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 38px;
+    }
+
+    .bubble:nth-child(2) { margin-left: 28px; background: #eff6ff; border-color: #bfdbfe; }
+
+    .mini-card strong {
+      display: block;
+      width: 64%;
+      height: 8px;
+      border-radius: 999px;
+      background: #cbd5e1;
+      margin-bottom: 8px;
+    }
+
+    .mini-card i {
+      display: block;
+      width: 92%;
+      height: 7px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      margin-bottom: 6px;
+    }
+
+    .board { grid-template-columns: repeat(3, 1fr); }
+    .board .lane { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; }
+    .board .lane::before { content: ""; display: block; height: 8px; width: 54%; border-radius: 999px; background: #cbd5e1; margin-bottom: 8px; }
+    .board .lane span { display: block; height: 34px; border: 1px solid #e5e7eb; background: #fff; border-radius: 6px; margin-top: 6px; }
+
+    .table-lines span {
+      height: 18px;
+      border-radius: 5px;
+      background: linear-gradient(90deg, #e2e8f0 0 28%, #f8fafc 28% 32%, #dbeafe 32% 50%, #f8fafc 50% 54%, #fee2e2 54% 72%, #f8fafc 72%);
+      border: 1px solid #e5e7eb;
+    }
+
+    .pattern-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .pattern {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .pattern strong { display: block; margin-bottom: 8px; }
+    .pattern p { color: var(--muted); font-size: 14px; margin-bottom: 0; }
+
+    .concept-grid {
+      display: grid;
+      gap: 22px;
+    }
+
+    .concept-card {
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+      box-shadow: none;
+    }
+
+    .concept-card img {
+      width: 100%;
+      height: 100%;
+      min-height: 360px;
+      object-fit: cover;
+      display: block;
+      background: #e5e7eb;
+    }
+
+    .concept-copy {
+      padding: 24px;
+      display: grid;
+      align-content: center;
+      gap: 14px;
+    }
+
+    .verdict {
+      border-left: 4px solid var(--green);
+      background: #ecfdf5;
+      padding: 12px 14px;
+      border-radius: 8px;
+      color: #065f46;
+      font-weight: 650;
+    }
+
+    .verdict.warn {
+      border-left-color: var(--amber);
+      background: #fffbeb;
+      color: #92400e;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li { margin: 6px 0; }
+
+    .compare {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .compare th, .compare td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    .compare th {
+      background: #f8fafc;
+      color: #334155;
+      font-weight: 750;
+    }
+
+    .compare tr:last-child td { border-bottom: 0; }
+
+    .footnotes {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 900px) {
+      .shell { padding: 20px 14px 48px; }
+      .hero, .concept-card, .decision { grid-template-columns: 1fr; }
+      .reference-grid, .pattern-grid { grid-template-columns: 1fr; }
+      h1 { font-size: 34px; }
+      .section { padding: 20px; }
+      .concept-card img { min-height: 260px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow">PMO Agent Web UI Research · 2026-06-03</div>
+        <h1>从“能聊天”升级为可信的 PMO 工作台</h1>
+        <p class="lead">这个 HTML 把原 Markdown 调研转成面向产品决策的图文版：每个参考产品都提炼它值得借鉴的交互模式，并给出 PMO Agent 的三套界面草图和推荐方向。</p>
+        <div class="toc">
+          <span class="pill">参考产品</span>
+          <span class="pill">Mobbin 风格模式</span>
+          <span class="pill">三套草图方案</span>
+          <span class="pill">推荐路线</span>
+        </div>
+      </div>
+      <aside class="hero-card">
+        <div>
+          <h3>核心判断</h3>
+          <p class="lead">PMO Agent 的第一屏应回答“今天什么值得关注”，而不是展示一个空聊天框。</p>
+        </div>
+        <div class="score-grid">
+          <div class="score"><b>Workstation</b><span>工作台优先</span></div>
+          <div class="score"><b>Evidence</b><span>证据链优先</span></div>
+          <div class="score"><b>Approval</b><span>危险动作审批</span></div>
+          <div class="score"><b>Chat</b><span>解释与触发入口</span></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="section" id="decision">
+      <div class="section-header">
+        <div>
+          <h2>产品定位</h2>
+          <p>PMO Agent 不应该照搬 Open WebUI 或 LibreChat 的通用聊天首页。它更像一个“项目运营控制台”：状态、风险、证据、审批是主路径，聊天只是可解释交互层。</p>
+        </div>
+      </div>
+      <div class="decision">
+        <div class="decision-box">
+          <strong>应该做</strong>
+          <ul>
+            <li>日报、风险、需求、人员、证据链、审批、运行记录在同一工作台内闭环。</li>
+            <li>Agent 输出结构化卡片：运行中、成功、失败、待审批、证据来源。</li>
+            <li>自然语言可以问，但高风险动作必须确认和审计。</li>
+          </ul>
+        </div>
+        <div class="decision-box">
+          <strong>不应该做</strong>
+          <ul>
+            <li>不要把首页做成普通聊天窗口。</li>
+            <li>不要把所有需求平铺成一个巨大表格。</li>
+            <li>不要让模型自由生成核心业务报告结构。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="references">
+      <div class="section-header">
+        <div>
+          <h2>参考产品图文分析</h2>
+          <p>下面每张图都使用公开官网、README、GitHub 附件或官方文档中的真实截图/动图。本节重点不是复刻视觉，而是从真实界面中提炼适合 PMO Agent 的信息架构和交互模式。</p>
+        </div>
+      </div>
+
+      <div class="reference-grid">
+        <article class="reference-card">
+          <div class="mock-shot">
+            <div class="real-shot">
+              <img src="assets/reference-products/open-webui-demo.png" alt="Open WebUI 官方 README demo 截图" />
+              <span class="shot-source">真实截图：open-webui/open-webui README demo.png</span>
+            </div>
+          </div>
+          <div class="reference-body">
+            <h3>Open WebUI</h3>
+            <p>强项是自托管、多模型、知识库、工具、工作区和管理后台。适合借鉴“左侧工作区 + 中央会话 + 管理配置”的成熟框架。</p>
+            <div class="reference-meta">
+              <span class="tag">自托管</span><span class="tag">权限后台</span><span class="tag">知识库</span>
+            </div>
+            <p><strong>PMO 借鉴：</strong>用它的侧边栏和工作区组织方式，但首页不要做纯聊天。</p>
+            <p><a href="https://github.com/open-webui/open-webui">GitHub</a> · <a href="https://docs.openwebui.com/">Docs</a></p>
+          </div>
+        </article>
+
+        <article class="reference-card">
+          <div class="mock-shot">
+            <div class="real-shot">
+              <img src="assets/reference-products/live/lobehub-live.png" alt="LobeHub 官网真实页面截图" />
+              <span class="shot-source">真实截图：lobehub.com 官网首页</span>
+            </div>
+          </div>
+          <div class="reference-body">
+            <h3>LobeHub / LobeChat</h3>
+            <p>更接近“Agent 工作单元”：agent、workspace、schedule、project、report、IM gateway 都能映射到 PMO Agent 的长期形态。</p>
+            <div class="reference-meta">
+              <span class="tag">Agent workspace</span><span class="tag">Schedule</span><span class="tag">Report</span>
+            </div>
+            <p><strong>PMO 借鉴：</strong>把 PMO Agent 作为一个每日运行的运营角色，而不是用户随手新建的聊天助手。</p>
+            <p><a href="https://github.com/lobehub/lobe-chat">GitHub</a> · <a href="https://lobehub.com/">Website</a></p>
+          </div>
+        </article>
+
+        <article class="reference-card">
+          <div class="mock-shot">
+            <div class="real-shot">
+              <img src="assets/reference-products/live/librechat-live.png" alt="LibreChat 官网真实页面截图" />
+              <span class="shot-source">真实截图：librechat.ai/about 官网页面</span>
+            </div>
+          </div>
+          <div class="reference-body">
+            <h3>LibreChat</h3>
+            <p>强项是企业多模型聊天、SSO/OAuth/SAML/LDAP、MCP、agents 和权限治理。适合学习企业身份与多模型配置，而不是学习 PMO 首页。</p>
+            <div class="reference-meta">
+              <span class="tag">企业身份</span><span class="tag">多模型</span><span class="tag">MCP</span>
+            </div>
+            <p><strong>PMO 借鉴：</strong>后续从 Basic Auth 升级到飞书身份或 SSO，区分日报模型和风险模型。</p>
+            <p><a href="https://www.librechat.ai/about">Website</a> · <a href="https://www.librechat.ai/docs/features/agents">Agents</a></p>
+          </div>
+        </article>
+
+        <article class="reference-card">
+          <div class="mock-shot">
+            <div class="real-shot">
+              <img src="assets/reference-products/copilotkit-demo.gif" alt="CopilotKit README 真实演示 GIF" />
+              <span class="shot-source">真实动图：CopilotKit README user attachment</span>
+            </div>
+          </div>
+          <div class="reference-body">
+            <h3>CopilotKit</h3>
+            <p>重点不是一个现成页面，而是“Agent-native app”交互范式：共享页面状态、工具调用、human-in-the-loop、动作卡片。</p>
+            <div class="reference-meta">
+              <span class="tag">Shared state</span><span class="tag">Tool cards</span><span class="tag">Human approval</span>
+            </div>
+            <p><strong>PMO 借鉴：</strong>用户在风险表选中需求后，右侧 Agent 自动带上下文回答，并输出审批卡片。</p>
+            <p><a href="https://github.com/CopilotKit/CopilotKit">GitHub</a> · <a href="https://docs.copilotkit.ai/">Docs</a></p>
+          </div>
+        </article>
+
+        <article class="reference-card">
+          <div class="mock-shot">
+            <div class="real-shot">
+              <img src="assets/reference-products/live/opengenerativeui-live.png" alt="OpenGenerativeUI GitHub 项目真实页面截图" />
+              <span class="shot-source">真实截图：OpenGenerativeUI GitHub 项目页</span>
+            </div>
+          </div>
+          <div class="reference-body">
+            <h3>OpenGenerativeUI</h3>
+            <p>展示 Agent 动态生成图表、diagram、widget 的方向。PMO 可以借鉴“动态分析视图”，但核心报告不应让模型任意生成。</p>
+            <div class="reference-meta">
+              <span class="tag">Generative UI</span><span class="tag">Charts</span><span class="tag">Sandbox</span>
+            </div>
+            <p><strong>PMO 借鉴：</strong>用于风险趋势、证据链图、需求状态流，不用于日报主结构。</p>
+            <p><a href="https://github.com/CopilotKit/OpenGenerativeUI">GitHub</a></p>
+          </div>
+        </article>
+
+        <article class="reference-card">
+          <div class="mock-shot">
+            <div class="real-shot">
+              <img src="assets/reference-products/autogen-studio-screen.png" alt="AutoGen Studio 官方文档截图" />
+              <span class="shot-source">真实截图：microsoft/autogen AutoGen Studio docs</span>
+            </div>
+          </div>
+          <div class="reference-body">
+            <h3>AutoGen Studio</h3>
+            <p>适合原型化多 Agent workflow、skills、models 和调试，但官方定位不是生产就绪应用。PMO 可借鉴 workflow 可视化和运行调试。</p>
+            <div class="reference-meta">
+              <span class="tag">Workflow</span><span class="tag">Prototype</span><span class="tag">Debug</span>
+            </div>
+            <p><strong>PMO 借鉴：</strong>展示每日核查 pipeline 和失败阶段重试，不照搬拖拽编排作为主流程。</p>
+            <p><a href="https://github.com/microsoft/autogen/blob/main/python/packages/autogen-studio/README.md">README</a></p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="mobbin-patterns">
+      <div class="section-header">
+        <div>
+          <h2>可参考的 Mobbin / 成熟 SaaS 模式</h2>
+          <p>不直接复刻具体页面，而是提炼成熟项目管理、CRM、客服、数据平台常用的交互模式。</p>
+        </div>
+      </div>
+      <div class="pattern-grid">
+        <div class="pattern"><strong>Linear / Jira 风格列表</strong><p>高密度表格、状态 chip、优先级、owner、更新时间，适合需求和风险池。</p></div>
+        <div class="pattern"><strong>Asana / Height 风格项目视图</strong><p>列表、看板、时间线多视图切换，适合需求进度和里程碑。</p></div>
+        <div class="pattern"><strong>Attio / HubSpot 风格详情抽屉</strong><p>选中对象后右侧展示字段、活动、证据和下一步，适合需求详情。</p></div>
+        <div class="pattern"><strong>Intercom / Zendesk 风格侧边对话</strong><p>聊天不占据主页面，而是围绕当前对象解释、建议、执行动作。</p></div>
+        <div class="pattern"><strong>Datadog / Linear Ops 风格运行日志</strong><p>运行阶段、失败原因、重试按钮、健康状态，适合 PMO worker 和日报生成。</p></div>
+        <div class="pattern"><strong>Notion / Coda 风格证据块</strong><p>把 GitLab MR、飞书项目字段、飞书文档摘录组织成可引用证据。</p></div>
+      </div>
+    </section>
+
+    <section class="section" id="concepts">
+      <div class="section-header">
+        <div>
+          <h2>PMO Agent 关键草图方案</h2>
+          <p>以下三张为生成式概念图，用于讨论产品方向。它们应该被理解为信息架构草图，不是最终视觉稿。</p>
+        </div>
+      </div>
+
+      <div class="concept-grid">
+        <article class="concept-card">
+          <img src="assets/pmo-ui-concept-dashboard.png" alt="PMO Agent 工作台首页草图" />
+          <div class="concept-copy">
+            <h3>方案 A：PMO Cockpit 工作台首页</h3>
+            <p>首页聚合数据源健康、今日指标、重点风险、今日进展和右侧 Agent 侧栏。适合 PMO Agent 的第一版产品化页面。</p>
+            <ul>
+              <li>优点：符合“今天什么值得关注”的核心问题。</li>
+              <li>优点：不把用户扔进空聊天框。</li>
+              <li>风险：如果指标和卡片太多，需要强筛选和默认排序。</li>
+            </ul>
+            <div class="verdict">推荐作为第一版主方案。</div>
+          </div>
+        </article>
+
+        <article class="concept-card">
+          <img src="assets/pmo-ui-concept-risk-triage.png" alt="PMO Agent 风险分诊草图" />
+          <div class="concept-copy">
+            <h3>方案 B：Risk Triage 风险分诊台</h3>
+            <p>以风险优先级为主轴，卡片化展示 P0/P1/P2、证据、置信度、建议动作和审批按钮。适合风险治理深入后作为二级页面。</p>
+            <ul>
+              <li>优点：非常适合“我今天要处理什么风险”。</li>
+              <li>优点：证据链和沟通草稿容易放进详情抽屉。</li>
+              <li>风险：不适合作为唯一首页，会弱化进展和人员视图。</li>
+            </ul>
+            <div class="verdict warn">推荐作为 `/risks` 页面，不建议作为唯一首页。</div>
+          </div>
+        </article>
+
+        <article class="concept-card">
+          <img src="assets/pmo-ui-concept-people-comms.png" alt="PMO Agent 人员沟通草图" />
+          <div class="concept-copy">
+            <h3>方案 C：People & Communication 人员/沟通视图</h3>
+            <p>按人组织需求、风险、最近交付、上次沟通和建议触达。适合解决“每个人在做什么、是否需要打扰”。</p>
+            <ul>
+              <li>优点：贴合你最初的第二个核心场景。</li>
+              <li>优点：能表达 no-disturb 逻辑，减少无效催办。</li>
+              <li>风险：需要较好的人员映射和项目字段维护，否则容易误判。</li>
+            </ul>
+            <div class="verdict warn">推荐作为第一版的重要二级页面，并在首页露出摘要。</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="recommendation">
+      <div class="section-header">
+        <div>
+          <h2>最终建议</h2>
+          <p>用方案 A 做第一版壳子，方案 B/C 作为两个主工作流页面，Agent Chat 只作为右侧上下文入口。</p>
+        </div>
+      </div>
+      <table class="compare">
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>页面</th>
+            <th>目标</th>
+            <th>不做什么</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>V1</td>
+            <td>Dashboard + Latest Report + Runs</td>
+            <td>一眼看懂今日状态、打开日报、看到运行是否健康。</td>
+            <td>不做通用聊天，不做复杂权限后台。</td>
+          </tr>
+          <tr>
+            <td>V1.5</td>
+            <td>Risks + Approvals</td>
+            <td>把风险分诊、建议沟通、审批动作闭环。</td>
+            <td>不允许自然语言直接发送消息或写回项目。</td>
+          </tr>
+          <tr>
+            <td>V2</td>
+            <td>Stories + People + Evidence</td>
+            <td>支持按需求、人、证据链深挖，形成长期项目记忆。</td>
+            <td>不把所有原始数据 dump 给用户。</td>
+          </tr>
+          <tr>
+            <td>V3</td>
+            <td>Agent Sidecar</td>
+            <td>自然语言问答、解释风险、触发补跑、生成审批草稿。</td>
+            <td>高风险动作仍然必须审批。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="footnotes">参考来源：Open WebUI、LobeHub/LobeChat、LibreChat、CopilotKit、OpenGenerativeUI、AutoGen Studio 的公开文档与开源仓库；Mobbin 作为成熟 SaaS 模式参考方向。</p>
+    </section>
+  </main>
+</body>
+</html>

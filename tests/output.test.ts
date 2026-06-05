@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { writeLocalReport, writeLocalReportArtifacts } from '../src/output/local.js'
 import type { AuditReport } from '../src/domain.js'
-import { createFeishuDocOutput, ensureMcpToolSucceeded, extractDocumentResult, explainFeishuDocSetupFailure, FeishuDocSetupError } from '../src/feishu/docs-output.js'
+import { createFeishuDocOutput, createFeishuOpenApiDocOutput, defaultLarkMcpLaunchFromEnv, ensureMcpToolSucceeded, extractDocumentResult, explainFeishuDocSetupFailure, FeishuDocSetupError } from '../src/feishu/docs-output.js'
 
 describe('report output', () => {
   it('writes local markdown reports to the configured directory', async () => {
@@ -48,7 +48,9 @@ describe('report output', () => {
       expect(html).toContain('<!doctype html>')
       expect(html).toContain('<title>MAAS_平台 PMO 状态核查日报 2026-05-31</title>')
       expect(html).not.toContain('<pre># Report</pre>')
-      expect(html).toContain('<h1>Report</h1>')
+      expect(html).toContain('class="pmo-shell"')
+      expect(html).toContain('PMO 状态核查')
+      expect(html).toContain('class="metric-grid"')
       await expect(readFile(artifacts.latestHtmlPath, 'utf8')).resolves.toBe(html)
 
       const json = JSON.parse(await readFile(artifacts.jsonPath, 'utf8'))
@@ -108,7 +110,7 @@ describe('report output', () => {
     }
   })
 
-  it('renders markdown tables and links as readable HTML', async () => {
+  it('renders structured report HTML instead of replaying markdown tables', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'pmo-readable-html-'))
     try {
       const artifacts = await writeLocalReportArtifacts({
@@ -129,12 +131,9 @@ describe('report output', () => {
       })
 
       const html = await readFile(artifacts.htmlPath, 'utf8')
-      expect(html).toContain('<h1>PMO Report</h1>')
-      expect(html).toContain('<h2>风险需求</h2>')
-      expect(html).toContain('<div class="table-wrap"><table>')
-      expect(html).toContain('<th>需求</th>')
-      expect(html).toContain('<td><a href="https://project.feishu.cn/story/detail/1">企业套餐购买</a></td>')
-      expect(html).toContain('<ul>')
+      expect(html).toContain('class="section-grid"')
+      expect(html).toContain('class="risk-list"')
+      expect(html).toContain('class="evidence-pill"')
       expect(html).not.toContain('| 需求 | 风险 | 建议 |')
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -162,6 +161,61 @@ describe('report output', () => {
   it('treats MCP tool isError responses as setup failures', async () => {
     expect(() => ensureMcpToolSucceeded({ isError: true, content: [{ type: 'text', text: 'token expired' }] }))
       .toThrow(FeishuDocSetupError)
+  })
+
+  it('treats lark-mcp document import failure text as setup failures', () => {
+    expect(() => ensureMcpToolSucceeded({ content: [{ type: 'text', text: '{"msg":"Document import failed, please try again later"}' }] }))
+      .toThrow(FeishuDocSetupError)
+  })
+
+  it('builds lark-mcp launch args from Feishu app credentials when explicit args are absent', () => {
+    const launch = defaultLarkMcpLaunchFromEnv({
+      FEISHU_APP_ID: 'cli_app',
+      FEISHU_APP_SECRET: 'app-secret',
+    })
+
+    expect(launch).toEqual({
+      command: 'npx',
+      args: ['-y', '@larksuiteoapi/lark-mcp', 'mcp', '-a', 'cli_app', '-s', 'app-secret', '--oauth'],
+    })
+  })
+
+  it('creates Feishu documents through OpenAPI when selected', async () => {
+    const output = createFeishuOpenApiDocOutput({
+      client: {
+        async createDocxDocumentFromMarkdown(input) {
+          expect(input.title).toBe('MAAS_平台 PMO 状态核查日报')
+          expect(input.markdown).toBe('# Report')
+          return { documentId: 'docx_1', url: 'https://zhipu-ai.feishu.cn/docx/docx_1', raw: { ok: true } }
+        },
+      },
+    })
+
+    await expect(output.createDocument('# Report')).resolves.toEqual({
+      documentId: 'docx_1',
+      url: 'https://zhipu-ai.feishu.cn/docx/docx_1',
+      raw: { ok: true },
+    })
+  })
+
+  it('selects OpenAPI document output from env mode', async () => {
+    const output = createFeishuDocOutput({
+      env: {
+        PMO_FEISHU_DOC_OUTPUT_MODE: 'openapi',
+        FEISHU_TENANT_ACCESS_TOKEN: 'tenant-token',
+        PMO_FEISHU_DOC_WEB_BASE_URL: 'https://zhipu-ai.feishu.cn/docx',
+      },
+      openApiClient: {
+        async createDocxDocumentFromMarkdown() {
+          return { documentId: 'docx_env', raw: {} }
+        },
+      },
+    })
+
+    await expect(output.createDocument('# Report')).resolves.toMatchObject({
+      documentId: 'docx_env',
+      url: 'https://zhipu-ai.feishu.cn/docx/docx_env',
+    })
   })
 
   it('turns Feishu permission errors into actionable setup guidance', () => {

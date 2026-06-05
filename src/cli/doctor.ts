@@ -1,12 +1,12 @@
-import { loadConfig, loadEnvFiles } from '../config.js'
-import { renderDiagnostics, runDiagnostics } from '../diagnostics.js'
+import { loadEnvFiles } from '../config.js'
+import { renderDiagnostics } from '../diagnostics.js'
+import { runPreflight } from '../preflight.js'
 
 async function main() {
   await loadEnvFiles()
-  const config = await loadConfig()
-  const checks = await runDiagnostics(config)
-  process.stdout.write(`${renderDiagnostics(checks)}\n`)
-  process.exitCode = checks.some(check => check.status === 'fail') ? 1 : 0
+  const preflight = await runPreflight()
+  process.stdout.write(`${renderDiagnostics(preflight.checks)}\n`)
+  process.exitCode = preflight.status === 'fail' ? 1 : 0
 }
 
 main().catch(error => {

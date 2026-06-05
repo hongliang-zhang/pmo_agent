@@ -11,6 +11,9 @@ describe('loadConfig', () => {
         GITLAB_TOKEN: 'env-token',
         FEISHU_PROJECT_MCP_URL: 'https://project.feishu.cn/mcp_server/v1',
         FEISHU_PROJECT_MCP_AUTH_HEADER: 'Authorization=Bearer project-token',
+        ZAI_API_KEY: 'zai-secret',
+        PMO_DAILY_MODEL: 'glm-5-turbo',
+        PMO_RISK_MODEL: 'glm-5.1',
       },
       credentialFill: async () => 'credential-token',
     })
@@ -19,7 +22,13 @@ describe('loadConfig', () => {
     expect(config.gitlab.baseUrl).toBe('https://dev.aminer.cn')
     expect(config.audit.timezone).toBe('Asia/Shanghai')
     expect(config.feishuProject.headers).toEqual({ Authorization: 'Bearer project-token' })
-    expect(config.feishuProject.activeStatuses).toEqual(['开发阶段', '测试阶段', '上线阶段', '进行中'])
+    expect(config.feishuProject.activeStatuses).toEqual(['技术方案输出', '开发阶段', '测试阶段', '上线阶段', '进行中'])
+    expect(config.models).toMatchObject({
+      provider: 'z.ai',
+      daily: { protocol: 'openai', baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', model: 'glm-5-turbo' },
+      risk: { protocol: 'anthropic', baseUrl: 'https://open.bigmodel.cn/api/anthropic', model: 'glm-5.1' },
+      apiKey: 'zai-secret',
+    })
   })
 
   it('falls back to git credential for GitLab token', async () => {

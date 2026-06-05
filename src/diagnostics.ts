@@ -14,7 +14,7 @@ export async function runDiagnostics(config: AppConfig): Promise<DiagnosticCheck
   const checks: DiagnosticCheck[] = []
   checks.push(await checkGitLab(config))
   checks.push(await checkFeishuProject(config))
-    checks.push(await checkLarkMcp())
+  checks.push(await checkLarkMcp())
   return checks
 }
 
@@ -58,8 +58,9 @@ async function checkFeishuProject(config: AppConfig): Promise<DiagnosticCheck> {
 }
 
 export async function checkLarkMcp(): Promise<DiagnosticCheck> {
+  const timeoutMs = Number(process.env.PMO_LARK_MCP_TIMEOUT_MS ?? 30_000)
   try {
-    const output = await runCommand('npx', ['-y', '@larksuiteoapi/lark-mcp', 'whoami'], 30_000)
+    const output = await runCommand('npx', ['-y', '@larksuiteoapi/lark-mcp', 'whoami'], timeoutMs)
     const session = parseLarkWhoami(output.stdout + output.stderr)
     if (!session.hasSession) {
       return {
@@ -69,12 +70,23 @@ export async function checkLarkMcp(): Promise<DiagnosticCheck> {
         nextStep: 'Run npx -y @larksuiteoapi/lark-mcp login -a <app_id> -s <app_secret>, then authorize in the browser.',
       }
     }
+    if (session.tokenExpired) {
+      const nextStep = session.refreshTokenMissing
+        ? 'Rerun lark-mcp login with document scopes. The current session has no refreshToken, so it cannot auto-renew; if Feishu asks for offline_access, approve/publish that permission first.'
+        : 'Rerun lark-mcp login with document scopes, then retry Feishu document creation.'
+      return {
+        name: 'lark-mcp OAuth',
+        status: 'fail',
+        detail: `Logged in with document scope, but user_access_token is expired. Current scopes: ${session.scopes.join(', ') || 'unknown'}.`,
+        nextStep,
+      }
+    }
     if (!session.hasDocumentScope) {
       return {
         name: 'lark-mcp OAuth',
         status: 'warn',
         detail: `Logged in, but document creation scope is missing. Current scopes: ${session.scopes.join(', ') || 'unknown'}.`,
-        nextStep: 'Open the Feishu app permission page, add docs:doc or drive:drive, publish/approve the change, then rerun lark-mcp login with the new scope.',
+        nextStep: 'Open the Feishu app permission page, add docx:document plus docs:doc or drive:drive as needed, publish/approve the change, then rerun lark-mcp login with --scope "offline_access docx:document drive:drive docs:doc".',
       }
     }
     return {
@@ -83,27 +95,38 @@ export async function checkLarkMcp(): Promise<DiagnosticCheck> {
       detail: `Logged in with document scope. Current scopes: ${session.scopes.join(', ')}.`,
     }
   } catch (error) {
+    const message = errorMessage(error)
+    if (/timed out/i.test(message)) {
+      return {
+        name: 'lark-mcp OAuth',
+        status: 'fail',
+        detail: message,
+        nextStep: 'Run `npx -y @larksuiteoapi/lark-mcp whoami` directly to inspect the hang. If the command is just slow, set PMO_LARK_MCP_TIMEOUT_MS=60000; otherwise rerun lark-mcp login with document scopes.',
+      }
+    }
     return {
       name: 'lark-mcp OAuth',
       status: 'fail',
-      detail: errorMessage(error),
-      nextStep: 'Install/reauthorize @larksuiteoapi/lark-mcp and make sure npx is available.',
+      detail: message,
+      nextStep: 'Install/reauthorize @larksuiteoapi/lark-mcp, confirm npx is available, then run `npx -y @larksuiteoapi/lark-mcp whoami` before retrying Feishu document creation.',
     }
   }
 }
 
-export function parseLarkWhoami(output: string): { hasSession: boolean; scopes: string[]; hasDocumentScope: boolean } {
+export function parseLarkWhoami(output: string): { hasSession: boolean; scopes: string[]; hasDocumentScope: boolean; tokenExpired: boolean; refreshTokenMissing: boolean } {
   if (/No active login sessions found/i.test(output)) {
-    return { hasSession: false, scopes: [], hasDocumentScope: false }
+    return { hasSession: false, scopes: [], hasDocumentScope: false, tokenExpired: false, refreshTokenMissing: false }
   }
   const scopes = [...output.matchAll(/"([^"]+)"/g)]
     .map(match => match[1]!)
     .filter(value => /^[a-z]+:[a-z0-9_.:-]+$/.test(value))
-  const documentScopes = new Set(['docs:doc', 'drive:drive', 'docs:document.media:upload'])
+  const documentScopes = new Set(['docx:document', 'docs:doc', 'drive:drive', 'docs:document.media:upload'])
   return {
     hasSession: /Current login sessions|App ID|AccessToken Expired/i.test(output),
     scopes,
     hasDocumentScope: scopes.some(scope => documentScopes.has(scope)),
+    tokenExpired: /AccessToken Expired:\s*true/i.test(output),
+    refreshTokenMissing: /"refreshToken"\s*:\s*""/i.test(output),
   }
 }
 

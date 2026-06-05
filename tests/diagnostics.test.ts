@@ -7,6 +7,8 @@ describe('diagnostics', () => {
       hasSession: false,
       scopes: [],
       hasDocumentScope: false,
+      tokenExpired: false,
+      refreshTokenMissing: false,
     })
   })
 
@@ -23,6 +25,50 @@ describe('diagnostics', () => {
     expect(parsed.hasSession).toBe(true)
     expect(parsed.scopes).toContain('docs:doc')
     expect(parsed.hasDocumentScope).toBe(true)
+    expect(parsed.tokenExpired).toBe(false)
+    expect(parsed.refreshTokenMissing).toBe(false)
+  })
+
+  it('accepts the lark-mcp documented docx document OAuth scope', () => {
+    const parsed = parseLarkWhoami(`
+      👤 Current login sessions:
+      📱 App ID: cli_x
+      "scopes": [
+        "auth:user.id:read",
+        "docx:document"
+      ]
+    `)
+
+    expect(parsed.hasSession).toBe(true)
+    expect(parsed.scopes).toContain('docx:document')
+    expect(parsed.hasDocumentScope).toBe(true)
+  })
+
+  it('detects expired lark-mcp user tokens', () => {
+    const parsed = parseLarkWhoami(`
+      👤 Current login sessions:
+      📱 App ID: cli_x
+      ⌚️ AccessToken Expired: true
+      "scopes": ["docx:document"]
+    `)
+
+    expect(parsed.hasSession).toBe(true)
+    expect(parsed.tokenExpired).toBe(true)
+    expect(parsed.hasDocumentScope).toBe(true)
+  })
+
+  it('detects expired lark-mcp sessions that cannot refresh automatically', () => {
+    const parsed = parseLarkWhoami(`
+      👤 Current login sessions:
+      📱 App ID: cli_x
+      ⌚️ AccessToken Expired: true
+      "scopes": ["auth:user.id:read", "docx:document", "drive:drive"]
+      "refreshToken": ""
+    `)
+
+    expect(parsed.hasSession).toBe(true)
+    expect(parsed.tokenExpired).toBe(true)
+    expect(parsed.refreshTokenMissing).toBe(true)
   })
 
   it('renders actionable setup diagnostics', () => {

@@ -1,0 +1,54 @@
+services:
+  pmo-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pmo-agent
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      PORT: "3201"
+      PMO_REPORTS_DIR: /persistent/reports
+      PMO_SERVE_REPORTS: "true"
+      PMO_PUBLIC_BASE_URL: https://pmo.hongliang.app
+      PMO_OPEN_WEBUI_INTERNAL_URL: http://open-webui:8080
+    volumes:
+      - /persistent/reports:/persistent/reports
+    ports:
+      - "127.0.0.1:3201:3201"
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    depends_on:
+      - pmo-agent
+    environment:
+      WEBUI_NAME: MAAS PMO Agent
+      WEBUI_URL: https://pmo.hongliang.app
+      ENABLE_PERSISTENT_CONFIG: "false"
+      WEBUI_ADMIN_EMAIL: ${WEBUI_ADMIN_EMAIL:-}
+      WEBUI_ADMIN_PASSWORD: ${WEBUI_ADMIN_PASSWORD:-}
+      DEFAULT_LOCALE: zh-CN
+      DEFAULT_MODELS: pmo-agent
+      DEFAULT_PINNED_MODELS: pmo-agent
+      ENABLE_SIGNUP: "false"
+      ENABLE_OLLAMA_API: "false"
+      ENABLE_OPENAI_API: "true"
+      ENABLE_EVALUATION_ARENA_MODELS: "false"
+      WEBUI_AUTH: "true"
+      DEFAULT_USER_ROLE: user
+      WEBUI_AUTH_TRUSTED_EMAIL_HEADER: X-Forwarded-Email
+      WEBUI_AUTH_TRUSTED_NAME_HEADER: X-Forwarded-User
+      OPENAI_API_BASE_URL: http://pmo-agent:3201/v1
+      OPENAI_API_BASE_URLS: http://pmo-agent:3201/v1
+      OPENAI_API_KEY: ${PMO_OPENAI_API_KEY}
+      OPENAI_API_KEYS: ${PMO_OPENAI_API_KEY}
+    volumes:
+      - open_webui_data:/app/backend/data
+    ports:
+      - "127.0.0.1:3000:8080"
+
+volumes:
+  open_webui_data:
