@@ -58,7 +58,7 @@ export async function handleOpenAiCompatibleRequest(req: IncomingMessage, res: S
   return true
 }
 
-async function answerPmoQuestionForOpenWebUi(input: { latestMessage: string; messages: any[] }): Promise<PmoAgentAnswer> {
+export async function answerPmoQuestionForOpenWebUi(input: { latestMessage: string; messages: any[] }): Promise<PmoAgentAnswer> {
   if (!process.env.ZAI_API_KEY) {
     return llmUnavailableAnswer('缺少 ZAI_API_KEY，无法进行 LLM 分析。')
   }
@@ -1076,7 +1076,7 @@ function stringifyMessageContent(content: unknown): string {
     .trim()
 }
 
-function renderAnswerForChat(answer: PmoAgentAnswer): string {
+export function renderAnswerForChat(answer: PmoAgentAnswer): string {
   const links = answer.links?.length
     ? `\n\n相关入口：\n${answer.links.map(link => `- [${link.label}](${link.url})`).join('\n')}`
     : ''

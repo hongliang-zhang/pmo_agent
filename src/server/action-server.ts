@@ -25,6 +25,7 @@ import { handleOpenAiCompatibleRequest } from './openai-compatible.js'
 export function createPmoActionServer(options: {
   preflight?: () => Promise<PreflightReport>
 } = {}): Server {
+  const feishuBotHandler = createFeishuBotHandler()
   return createServer(async (req, res) => {
     try {
       if (await handleOpenAiCompatibleRequest(req, res)) return
@@ -54,7 +55,7 @@ export function createPmoActionServer(options: {
       }
       if (req.method === 'POST' && req.url === '/feishu/events') {
         const { raw, body } = await readRawJson(req)
-        const result = await createFeishuBotHandler().handle({ body, rawBody: raw, headers: req.headers })
+        const result = await feishuBotHandler.handle({ body, rawBody: raw, headers: req.headers })
         sendJson(res, result.status, result.body)
         return
       }

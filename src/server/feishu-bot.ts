@@ -3,8 +3,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { FeishuOpenApiClient } from '../feishu/openapi.js'
 import { runDailyAgentCycle, type PmoRunRecord } from './runs.js'
-import { answerPmoQuestion } from './agent-chat.js'
-import { loadPmoAppState } from './app-data.js'
+import type { PmoAgentAnswer } from './agent-chat.js'
+import { answerPmoQuestionForOpenWebUi, renderAnswerForChat } from './openai-compatible.js'
 
 export interface FeishuBotSender {
   openId?: string
@@ -31,6 +31,7 @@ export interface FeishuBotHandlerOptions {
   reportsDir?: string
   sendText?: (input: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; text: string }) => Promise<unknown>
   runDaily?: (input: { date: string; reportsDir: string }) => Promise<PmoRunRecord>
+  answerQuestion?: (input: { latestMessage: string; messages: Array<{ role: 'user' | 'assistant'; content: string }> }) => Promise<PmoAgentAnswer>
 }
 
 export interface FeishuEventVerificationInput {
@@ -54,6 +55,8 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
   const botOpenId = options.botOpenId ?? process.env.PMO_FEISHU_BOT_OPEN_ID
   const botUserId = options.botUserId ?? process.env.PMO_FEISHU_BOT_USER_ID
   const sendText = options.sendText ?? (async input => new FeishuOpenApiClient().sendTextMessage(input))
+  const answerQuestion = options.answerQuestion ?? answerPmoQuestionForOpenWebUi
+  const conversationByThread = new Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>()
   const runDaily = options.runDaily ?? (async input => runDailyAgentCycle({
     date: input.date,
     reportsDir: input.reportsDir,
@@ -120,6 +123,8 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
         publicBaseUrl,
         reportsDir,
         runDaily,
+        answerQuestion,
+        conversationByThread,
       })
       await sendText({ ...replyTarget(event), text: reply })
       await appendBotAuditEvent(reportsDir, { event, decision: 'replied', command: summarizeCommand(text) })
@@ -241,6 +246,8 @@ async function executeBotCommand(input: {
   publicBaseUrl: string
   reportsDir: string
   runDaily: (input: { date: string; reportsDir: string }) => Promise<PmoRunRecord>
+  answerQuestion: (input: { latestMessage: string; messages: Array<{ role: 'user' | 'assistant'; content: string }> }) => Promise<PmoAgentAnswer>
+  conversationByThread: Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>
 }): Promise<string> {
   const text = input.text.trim()
   if (/^(help|帮助|菜单)$/i.test(text)) return helpMessage()
@@ -269,8 +276,13 @@ async function executeBotCommand(input: {
     return `日报生成失败：${run.error ? JSON.stringify(run.error) : 'unknown error'}`
   }
 
-  const state = await loadPmoAppState({ reportsDir: input.reportsDir, publicBaseUrl: input.publicBaseUrl })
-  return answerPmoQuestion(text, state).text
+  const threadKey = feishuConversationKey(input.event)
+  const history = input.conversationByThread.get(threadKey) ?? []
+  const messages = [...history, { role: 'user' as const, content: text }]
+  const answer = await input.answerQuestion({ latestMessage: text, messages })
+  const reply = renderAnswerForChat(answer)
+  input.conversationByThread.set(threadKey, [...messages, { role: 'assistant' as const, content: reply }].slice(-10))
+  return reply
 }
 
 function latestReportMessage(publicBaseUrl: string): string {
@@ -285,7 +297,10 @@ function latestReportMessage(publicBaseUrl: string): string {
 
 function helpMessage(): string {
   return [
-    'PMO Agent 可用命令：',
+    'PMO Agent 已接入 Open WebUI 同款自由对话链路。',
+    '你可以直接问项目、人员、风险、GitLab 进展、飞书需求同步等问题。',
+    '',
+    '保留的运维命令：',
     '最新日报：返回最新日报、索引、运行面板、审批中心链接。',
     '健康：返回服务健康检查入口。',
     '生成日报 YYYY-MM-DD：生成指定中国自然日的本地日报，不自动写飞书项目字段。',
@@ -301,6 +316,11 @@ function replyTarget(event: { sender: FeishuBotSender; chatId: string; chatType:
   if (event.sender.userId) return { receiveIdType: 'user_id', receiveId: event.sender.userId }
   if (event.sender.unionId) return { receiveIdType: 'union_id', receiveId: event.sender.unionId }
   return { receiveIdType: 'chat_id', receiveId: event.chatId }
+}
+
+function feishuConversationKey(event: { sender: FeishuBotSender; chatId: string; chatType: string }): string {
+  const sender = event.sender.openId ?? event.sender.userId ?? event.sender.unionId ?? 'unknown'
+  return `${event.chatType}:${event.chatId}:${sender}`
 }
 
 function verifyFeishuSignature(input: {

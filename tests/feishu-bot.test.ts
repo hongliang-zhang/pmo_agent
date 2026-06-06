@@ -1,6 +1,3 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createFeishuBotHandler, extractFeishuMessageText, isFeishuBotAllowed, verifyFeishuEvent } from '../src/server/feishu-bot.js'
 
@@ -136,48 +133,23 @@ describe('Feishu bot event handler', () => {
     expect(sent.at(-1)?.text).toContain('2026-06-02-pmo-audit.html')
   })
 
-  it('answers natural language PMO questions from the latest local report', async () => {
-    const reportsDir = await mkdtemp(join(tmpdir(), 'pmo-bot-natural-'))
-    await writeFile(join(reportsDir, '2026-06-02-pmo-audit.json'), JSON.stringify({
-      title: 'MAAS_平台 PMO 状态核查日报 2026-06-02',
-      date: '2026-06-02',
-      summary: { stories: 1, focused: 1, suppressed: 0, highPriorityRisks: 1, progressed: 1, risky: 1, incomplete: 1, suggestedContacts: 1 },
-      storyAudits: [{
-        story: { id: 'S1', title: '企业套餐购买', status: '开发阶段', owners: [{ name: '王建辉' }], linkedDocs: [], fields: {} },
-        evidence: [],
-        risks: [{
-          id: 'S1:missing_goal',
-          storyId: 'S1',
-          type: 'missing_goal',
-          severity: 'high',
-          priority: 'P1',
-          description: '需求缺少明确目标。',
-          evidenceIds: [],
-          suggestedAction: '找 owner 补目标。',
-          ownerToContact: { name: '王建辉' },
-        }],
-        confidence: 'confirmed',
-        progressSummary: 'MR 已打开。',
-      }],
-      progressedStories: [],
-      riskyStories: [],
-      incompleteStories: [],
-      gitlabEvidence: [],
-      isolatedEvidence: [],
-      suggestedContacts: [],
-      noNeedToDisturb: [],
-    }))
+  it('routes natural language PMO questions to the Open WebUI-compatible agent', async () => {
     const sent: Array<{ text: string }> = []
+    const answerQuestion = vi.fn(async () => ({
+      intent: 'model_grounded_pmo_answer',
+      confidence: 'medium',
+      text: '### 实时判断\n企业套餐购买存在目标缺失风险。',
+    } as const))
     const handler = createFeishuBotHandler({
       verificationToken: 'verify-token',
       allowedUserIds: new Set(['u1']),
       allowedChatIds: new Set(),
-      reportsDir,
       publicBaseUrl: 'https://pmo.hongliang.app',
       sendText: async input => {
         sent.push({ text: input.text })
       },
       runDaily: vi.fn(),
+      answerQuestion,
     })
 
     const result = await handler.handle({
@@ -192,8 +164,62 @@ describe('Feishu bot event handler', () => {
     })
 
     expect(result.status).toBe(200)
+    expect(answerQuestion).toHaveBeenCalledWith(expect.objectContaining({
+      latestMessage: '今天有哪些风险？',
+      messages: [{ role: 'user', content: '今天有哪些风险？' }],
+    }))
     expect(sent.at(-1)?.text).toContain('企业套餐购买')
-    expect(sent.at(-1)?.text).toContain('找 owner 补目标')
+    expect(sent.at(-1)?.text).not.toContain('我还不能可靠理解这个问题')
+  })
+
+  it('keeps Feishu conversation history for follow-up questions', async () => {
+    const sent: Array<{ text: string }> = []
+    const answerQuestion = vi.fn(async input => ({
+      intent: 'model_grounded_pmo_answer',
+      confidence: 'medium',
+      text: input.latestMessage.includes('他在 gitlab')
+        ? '### GitLab 进展\n根据上一轮的“王建辉”继续查询。'
+        : '### 人员状态\n王建辉最近在企业套餐购买需求上有进展。',
+    } as const))
+    const handler = createFeishuBotHandler({
+      verificationToken: 'verify-token',
+      allowedUserIds: new Set(['u1']),
+      sendText: async input => {
+        sent.push({ text: input.text })
+      },
+      answerQuestion,
+    })
+
+    await handler.handle({
+      body: feishuMessageEvent({
+        token: 'verify-token',
+        text: '王建辉在做什么？',
+        userId: 'u1',
+        openId: 'ou1',
+        chatId: 'ou1',
+        chatType: 'p2p',
+        eventId: 'ev-person',
+      }),
+    })
+    await handler.handle({
+      body: feishuMessageEvent({
+        token: 'verify-token',
+        text: '他在 gitlab 里有没有更新？',
+        userId: 'u1',
+        openId: 'ou1',
+        chatId: 'ou1',
+        chatType: 'p2p',
+        eventId: 'ev-follow-up',
+      }),
+    })
+
+    expect(sent).toHaveLength(2)
+    expect(answerQuestion).toHaveBeenCalledTimes(2)
+    expect(answerQuestion.mock.calls[1]?.[0].messages).toEqual([
+      { role: 'user', content: '王建辉在做什么？' },
+      expect.objectContaining({ role: 'assistant', content: expect.stringContaining('王建辉最近') }),
+      { role: 'user', content: '他在 gitlab 里有没有更新？' },
+    ])
   })
 
   it('deduplicates repeated Feishu events by event id', async () => {
