@@ -109,6 +109,43 @@ export class FeishuOpenApiClient {
     })
   }
 
+  async sendMarkdownCardMessage(input: {
+    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id'
+    receiveId: string
+    title?: string
+    markdown: string
+  }): Promise<unknown> {
+    return this.request(`/im/v1/messages?receive_id_type=${encodeURIComponent(input.receiveIdType)}`, {
+      method: 'POST',
+      body: {
+        receive_id: input.receiveId,
+        msg_type: 'interactive',
+        content: JSON.stringify(markdownToFeishuCard(input.markdown, input.title ?? 'PMO Agent')),
+      },
+    })
+  }
+
+  async addMessageReaction(input: { messageId: string; emojiType: string }): Promise<{ reactionId?: string; raw: unknown }> {
+    const data = await this.request(`/im/v1/messages/${encodeURIComponent(input.messageId)}/reactions`, {
+      method: 'POST',
+      body: {
+        reaction_type: {
+          emoji_type: input.emojiType,
+        },
+      },
+    })
+    return {
+      reactionId: data?.data?.reaction_id,
+      raw: data,
+    }
+  }
+
+  async deleteMessageReaction(input: { messageId: string; reactionId: string }): Promise<unknown> {
+    return this.request(`/im/v1/messages/${encodeURIComponent(input.messageId)}/reactions/${encodeURIComponent(input.reactionId)}`, {
+      method: 'DELETE',
+    })
+  }
+
   async createDocxDocumentFromMarkdown(input: { title: string; markdown: string; folderToken?: string }): Promise<FeishuDocxDocumentResult> {
     const created = await this.request('/docx/v1/documents', {
       method: 'POST',
@@ -154,7 +191,7 @@ export class FeishuOpenApiClient {
     }
   }
 
-  private async request(path: string, input: { method: 'GET' | 'POST' | 'PATCH'; body?: unknown }): Promise<any> {
+  private async request(path: string, input: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown }): Promise<any> {
     const token = await this.getTenantAccessToken()
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method: input.method,
@@ -189,6 +226,37 @@ export class FeishuOpenApiClient {
     this.tenantAccessToken = token
     return token
   }
+}
+
+export function markdownToFeishuCard(markdown: string, title = 'PMO Agent'): Record<string, unknown> {
+  return {
+    schema: '2.0',
+    config: {
+      update_multi: true,
+    },
+    header: {
+      title: {
+        tag: 'plain_text',
+        content: title,
+      },
+      template: 'blue',
+    },
+    body: {
+      elements: [{
+        tag: 'markdown',
+        element_id: 'pmo_agent_reply',
+        content: normalizeCardMarkdown(markdown),
+        text_size: 'normal',
+      }],
+    },
+  }
+}
+
+function normalizeCardMarkdown(markdown: string): string {
+  return markdown
+    .replace(/^#{1,2}[^\S\r\n]+(.+?)[^\S\r\n]*$/gm, '### $1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 export function markdownToFeishuPost(markdown: string, title = 'PMO Agent'): FeishuPostMessageContent {

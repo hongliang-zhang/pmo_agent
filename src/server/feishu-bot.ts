@@ -26,12 +26,14 @@ export interface FeishuBotHandlerOptions {
   allowedChatIds?: Set<string>
   botOpenId?: string
   botUserId?: string
-  ackText?: string
+  ackReactionEmoji?: string
   processedEventIds?: Set<string>
   publicBaseUrl?: string
   reportsDir?: string
   sendText?: (input: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; text: string }) => Promise<unknown>
-  sendPost?: (input: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; title?: string; markdown: string }) => Promise<unknown>
+  sendMarkdownCard?: (input: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; title?: string; markdown: string }) => Promise<unknown>
+  addReaction?: (input: { messageId: string; emojiType: string }) => Promise<{ reactionId?: string; raw: unknown }>
+  deleteReaction?: (input: { messageId: string; reactionId: string }) => Promise<unknown>
   runDaily?: (input: { date: string; reportsDir: string }) => Promise<PmoRunRecord>
   answerQuestion?: (input: { latestMessage: string; messages: Array<{ role: 'user' | 'assistant'; content: string }> }) => Promise<PmoAgentAnswer>
 }
@@ -56,13 +58,17 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
   const processedEventIds = options.processedEventIds ?? new Set<string>()
   const botOpenId = options.botOpenId ?? process.env.PMO_FEISHU_BOT_OPEN_ID
   const botUserId = options.botUserId ?? process.env.PMO_FEISHU_BOT_USER_ID
-  const ackText = options.ackText ?? process.env.PMO_FEISHU_BOT_ACK_TEXT ?? '👀'
+  const ackReactionEmoji = options.ackReactionEmoji ?? process.env.PMO_FEISHU_BOT_ACK_REACTION ?? 'SMILE'
   const feishuClient = new FeishuOpenApiClient()
   const sendText = options.sendText ?? (async input => feishuClient.sendTextMessage(input))
-  const sendPost = options.sendPost
+  const sendMarkdownCard = options.sendMarkdownCard
     ?? (options.sendText
       ? (async input => options.sendText?.({ receiveIdType: input.receiveIdType, receiveId: input.receiveId, text: markdownToPlainText(input.markdown) }))
-      : (async input => feishuClient.sendPostMessage(input)))
+      : (async input => feishuClient.sendMarkdownCardMessage(input)))
+  const addReaction = options.addReaction
+    ?? (options.sendText ? (async () => ({ raw: { skipped: true } })) : (async input => feishuClient.addMessageReaction(input)))
+  const deleteReaction = options.deleteReaction
+    ?? (options.sendText ? (async () => undefined) : (async input => feishuClient.deleteMessageReaction(input)))
   const answerQuestion = options.answerQuestion ?? answerPmoQuestionForOpenWebUi
   const conversationByThread = new Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>()
   const runDaily = options.runDaily ?? (async input => runDailyAgentCycle({
@@ -126,17 +132,23 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
       }
 
       const target = replyTarget(event)
-      if (ackText) await sendText({ ...target, text: ackText })
-      const reply = await executeBotCommand({
-        text,
-        event,
-        publicBaseUrl,
-        reportsDir,
-        runDaily,
-        answerQuestion,
-        conversationByThread,
-      })
-      await sendFormattedReply({ sendPost, sendText, target, markdown: reply })
+      const ack = await addAckReaction({ addReaction, messageId: event.message?.message_id, emojiType: ackReactionEmoji })
+      try {
+        const reply = await executeBotCommand({
+          text,
+          event,
+          publicBaseUrl,
+          reportsDir,
+          runDaily,
+          answerQuestion,
+          conversationByThread,
+        })
+        await sendFormattedReply({ sendMarkdownCard, sendText, target, markdown: reply })
+      } finally {
+        if (ack?.reactionId && event.message?.message_id) {
+          await removeAckReaction({ deleteReaction, messageId: event.message.message_id, reactionId: ack.reactionId })
+        }
+      }
       await appendBotAuditEvent(reportsDir, { event, decision: 'replied', command: summarizeCommand(text) })
       return { status: 200, body: { success: true } }
     },
@@ -334,16 +346,42 @@ function feishuConversationKey(event: { sender: FeishuBotSender; chatId: string;
 }
 
 async function sendFormattedReply(input: {
-  sendPost: (message: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; title?: string; markdown: string }) => Promise<unknown>
+  sendMarkdownCard: (message: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; title?: string; markdown: string }) => Promise<unknown>
   sendText: (message: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; text: string }) => Promise<unknown>
   target: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string }
   markdown: string
 }): Promise<void> {
   try {
-    await input.sendPost({ ...input.target, title: 'PMO Agent', markdown: input.markdown })
+    await input.sendMarkdownCard({ ...input.target, title: 'PMO Agent', markdown: input.markdown })
   } catch (error) {
-    process.stderr.write(`[pmo-feishu] post_reply_failed ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n`)
+    process.stderr.write(`[pmo-feishu] card_reply_failed ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n`)
     await input.sendText({ ...input.target, text: markdownToPlainText(input.markdown) })
+  }
+}
+
+async function addAckReaction(input: {
+  addReaction: (message: { messageId: string; emojiType: string }) => Promise<{ reactionId?: string; raw: unknown }>
+  messageId?: string
+  emojiType?: string
+}): Promise<{ reactionId?: string } | undefined> {
+  if (!input.messageId || !input.emojiType) return undefined
+  try {
+    return await input.addReaction({ messageId: input.messageId, emojiType: input.emojiType })
+  } catch (error) {
+    process.stderr.write(`[pmo-feishu] ack_reaction_failed ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n`)
+    return undefined
+  }
+}
+
+async function removeAckReaction(input: {
+  deleteReaction: (message: { messageId: string; reactionId: string }) => Promise<unknown>
+  messageId: string
+  reactionId: string
+}): Promise<void> {
+  try {
+    await input.deleteReaction({ messageId: input.messageId, reactionId: input.reactionId })
+  } catch (error) {
+    process.stderr.write(`[pmo-feishu] ack_reaction_delete_failed ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n`)
   }
 }
 

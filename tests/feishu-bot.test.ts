@@ -89,11 +89,10 @@ describe('Feishu bot event handler', () => {
     })
 
     expect(result).toEqual({ status: 200, body: { success: true } })
-    expect(sent).toHaveLength(2)
+    expect(sent).toHaveLength(1)
     expect(sent[0]).toMatchObject({ receiveIdType: 'open_id', receiveId: 'ou1' })
-    expect(sent[0]?.text).toBe('👀')
-    expect(sent[1]?.text).toContain('latest-pmo-audit.html')
-    expect(sent[1]?.text).toContain('ops-dashboard.html')
+    expect(sent[0]?.text).toContain('latest-pmo-audit.html')
+    expect(sent[0]?.text).toContain('ops-dashboard.html')
   })
 
   it('runs a daily report command for an allowed sender and sends completion summary', async () => {
@@ -130,7 +129,6 @@ describe('Feishu bot event handler', () => {
 
     expect(result.status).toBe(200)
     expect(runDaily).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-06-02' }))
-    expect(sent[0]?.text).toBe('👀')
     expect(sent.at(-1)?.text).toContain('日报已生成')
     expect(sent.at(-1)?.text).toContain('2026-06-02-pmo-audit.html')
   })
@@ -170,9 +168,45 @@ describe('Feishu bot event handler', () => {
       latestMessage: '今天有哪些风险？',
       messages: [{ role: 'user', content: '今天有哪些风险？' }],
     }))
-    expect(sent[0]?.text).toBe('👀')
     expect(sent.at(-1)?.text).toContain('企业套餐购买')
     expect(sent.at(-1)?.text).not.toContain('我还不能可靠理解这个问题')
+  })
+
+  it('adds an ack reaction to the incoming message and removes it after replying', async () => {
+    const sent: Array<{ text: string }> = []
+    const addReaction = vi.fn(async () => ({ reactionId: 'reaction-1', raw: {} }))
+    const deleteReaction = vi.fn(async () => undefined)
+    const handler = createFeishuBotHandler({
+      verificationToken: 'verify-token',
+      allowedUserIds: new Set(['u1']),
+      sendText: async input => {
+        sent.push({ text: input.text })
+      },
+      addReaction,
+      deleteReaction,
+      answerQuestion: vi.fn(async () => ({
+        intent: 'model_grounded_pmo_answer',
+        confidence: 'medium',
+        text: '### 回复\n已收到并处理。',
+      } as const)),
+    })
+
+    await handler.handle({
+      body: feishuMessageEvent({
+        token: 'verify-token',
+        text: 'hi',
+        userId: 'u1',
+        openId: 'ou1',
+        chatId: 'ou1',
+        chatType: 'p2p',
+        eventId: 'ev-ack',
+      }),
+    })
+
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.text).not.toBe('👀')
+    expect(addReaction).toHaveBeenCalledWith({ messageId: 'om-hi', emojiType: 'SMILE' })
+    expect(deleteReaction).toHaveBeenCalledWith({ messageId: 'om-hi', reactionId: 'reaction-1' })
   })
 
   it('keeps Feishu conversation history for follow-up questions', async () => {
@@ -216,7 +250,7 @@ describe('Feishu bot event handler', () => {
       }),
     })
 
-    expect(sent).toHaveLength(4)
+    expect(sent).toHaveLength(2)
     expect(answerQuestion).toHaveBeenCalledTimes(2)
     expect(answerQuestion.mock.calls[1]?.[0].messages).toEqual([
       { role: 'user', content: '王建辉在做什么？' },
@@ -248,8 +282,7 @@ describe('Feishu bot event handler', () => {
     await handler.handle({ body })
     const repeated = await handler.handle({ body })
 
-    expect(sent).toHaveLength(2)
-    expect(sent[0]?.text).toBe('👀')
+    expect(sent).toHaveLength(1)
     expect(repeated).toEqual({ status: 200, body: { success: true, skipped: true, reason: 'duplicate_event' } })
   })
 

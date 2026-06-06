@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { FeishuOpenApiClient, markdownToFeishuPost } from '../src/feishu/openapi.js'
+import { FeishuOpenApiClient, markdownToFeishuCard, markdownToFeishuPost } from '../src/feishu/openapi.js'
 
 describe('Feishu OpenAPI client', () => {
   it('uses Contacts API to map emails to open_id', async () => {
@@ -59,6 +59,69 @@ describe('Feishu OpenAPI client', () => {
         '- [Open WebUI](https://pmo.hongliang.app)',
       ].join('\n'),
     })).resolves.toMatchObject({ data: { message_id: 'om_post' } })
+  })
+
+  it('sends PMO replies as interactive Markdown cards', async () => {
+    const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(url)).toContain('/im/v1/messages?receive_id_type=open_id')
+      const body = JSON.parse(String(init?.body))
+      expect(body).toMatchObject({ receive_id: 'ou_hl', msg_type: 'interactive' })
+      const card = JSON.parse(body.content)
+      expect(card).toMatchObject({
+        schema: '2.0',
+        header: { title: { tag: 'plain_text', content: 'PMO Agent' } },
+        body: { elements: [expect.objectContaining({ tag: 'markdown' })] },
+      })
+      expect(card.body.elements[0].content).toContain('- **飞书项目**')
+      expect(card.body.elements[0].content).toContain('[Open WebUI](https://pmo.hongliang.app)')
+      return jsonResponse({ code: 0, data: { message_id: 'om_card' } })
+    })
+
+    const client = new FeishuOpenApiClient({ tenantAccessToken: 'tenant-token', fetch: fetch as unknown as typeof globalThis.fetch })
+    await expect(client.sendMarkdownCardMessage({
+      receiveIdType: 'open_id',
+      receiveId: 'ou_hl',
+      markdown: [
+        '### 实时数据核查概览',
+        '- **飞书项目**：已获取 192 条活跃需求。',
+        '- [Open WebUI](https://pmo.hongliang.app)',
+      ].join('\n'),
+    })).resolves.toMatchObject({ data: { message_id: 'om_card' } })
+  })
+
+  it('builds JSON 2.0 cards with native Markdown content', () => {
+    expect(markdownToFeishuCard('# 一级标题\n- **列表**')).toMatchObject({
+      schema: '2.0',
+      body: {
+        elements: [expect.objectContaining({
+          tag: 'markdown',
+          content: '### 一级标题\n- **列表**',
+        })],
+      },
+    })
+  })
+
+  it('adds and deletes message reactions', async () => {
+    const calls: Array<{ url: string; method?: string; body?: any }> = []
+    const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      if (init?.method === 'POST') return jsonResponse({ code: 0, data: { reaction_id: 'reaction-1' } })
+      return jsonResponse({ code: 0, data: {} })
+    })
+
+    const client = new FeishuOpenApiClient({ tenantAccessToken: 'tenant-token', fetch: fetch as unknown as typeof globalThis.fetch })
+    await expect(client.addMessageReaction({ messageId: 'om_1', emojiType: 'SMILE' })).resolves.toMatchObject({ reactionId: 'reaction-1' })
+    await expect(client.deleteMessageReaction({ messageId: 'om_1', reactionId: 'reaction-1' })).resolves.toMatchObject({ code: 0 })
+
+    expect(calls[0]).toMatchObject({
+      url: expect.stringContaining('/im/v1/messages/om_1/reactions'),
+      method: 'POST',
+      body: { reaction_type: { emoji_type: 'SMILE' } },
+    })
+    expect(calls[1]).toMatchObject({
+      url: expect.stringContaining('/im/v1/messages/om_1/reactions/reaction-1'),
+      method: 'DELETE',
+    })
   })
 
   it('converts markdown links to Feishu post link elements', () => {
