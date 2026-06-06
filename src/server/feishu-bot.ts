@@ -26,6 +26,7 @@ export interface FeishuBotHandlerOptions {
   allowedChatIds?: Set<string>
   botOpenId?: string
   botUserId?: string
+  ackText?: string
   processedEventIds?: Set<string>
   publicBaseUrl?: string
   reportsDir?: string
@@ -54,6 +55,7 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
   const processedEventIds = options.processedEventIds ?? new Set<string>()
   const botOpenId = options.botOpenId ?? process.env.PMO_FEISHU_BOT_OPEN_ID
   const botUserId = options.botUserId ?? process.env.PMO_FEISHU_BOT_USER_ID
+  const ackText = options.ackText ?? process.env.PMO_FEISHU_BOT_ACK_TEXT ?? '👀'
   const sendText = options.sendText ?? (async input => new FeishuOpenApiClient().sendTextMessage(input))
   const answerQuestion = options.answerQuestion ?? answerPmoQuestionForOpenWebUi
   const conversationByThread = new Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>()
@@ -117,6 +119,8 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
         return { status: 200, body: { success: true, skipped: true, reason: 'empty_text' } }
       }
 
+      const target = replyTarget(event)
+      if (ackText) await sendText({ ...target, text: ackText })
       const reply = await executeBotCommand({
         text,
         event,
@@ -126,7 +130,7 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
         answerQuestion,
         conversationByThread,
       })
-      await sendText({ ...replyTarget(event), text: reply })
+      await sendText({ ...target, text: reply })
       await appendBotAuditEvent(reportsDir, { event, decision: 'replied', command: summarizeCommand(text) })
       return { status: 200, body: { success: true } }
     },
