@@ -22,6 +22,15 @@ export interface FeishuDocxDocumentResult {
   raw: unknown
 }
 
+export interface FeishuPostMessageContent {
+  post: {
+    zh_cn: {
+      title: string
+      content: Array<Array<{ tag: 'text'; text: string } | { tag: 'a'; text: string; href: string }>>
+    }
+  }
+}
+
 type AppendOperation =
   | { type: 'children'; children: unknown[] }
   | { type: 'descendant'; childrenId: string[]; descendants: unknown[] }
@@ -80,6 +89,22 @@ export class FeishuOpenApiClient {
         receive_id: input.receiveId,
         msg_type: 'text',
         content: JSON.stringify({ text: input.text }),
+      },
+    })
+  }
+
+  async sendPostMessage(input: {
+    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id'
+    receiveId: string
+    title?: string
+    markdown: string
+  }): Promise<unknown> {
+    return this.request(`/im/v1/messages?receive_id_type=${encodeURIComponent(input.receiveIdType)}`, {
+      method: 'POST',
+      body: {
+        receive_id: input.receiveId,
+        msg_type: 'post',
+        content: JSON.stringify(markdownToFeishuPost(input.markdown, input.title ?? 'PMO Agent')),
       },
     })
   }
@@ -164,6 +189,49 @@ export class FeishuOpenApiClient {
     this.tenantAccessToken = token
     return token
   }
+}
+
+export function markdownToFeishuPost(markdown: string, title = 'PMO Agent'): FeishuPostMessageContent {
+  const lines = markdown
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map(line => line.trimEnd())
+
+  const content = lines.flatMap(line => {
+    if (!line.trim()) return [[{ tag: 'text' as const, text: ' ' }]]
+    return [markdownLineToPostElements(line)]
+  })
+
+  return {
+    post: {
+      zh_cn: {
+        title,
+        content: content.length ? content : [[{ tag: 'text', text: ' ' }]],
+      },
+    },
+  }
+}
+
+function markdownLineToPostElements(line: string): Array<{ tag: 'text'; text: string } | { tag: 'a'; text: string; href: string }> {
+  let text = line
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/^[-*]\s+/, '• ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+
+  const elements: Array<{ tag: 'text'; text: string } | { tag: 'a'; text: string; href: string }> = []
+  const linkPattern = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g
+  let lastIndex = 0
+  for (const match of text.matchAll(linkPattern)) {
+    const index = match.index ?? 0
+    if (index > lastIndex) elements.push({ tag: 'text', text: text.slice(lastIndex, index) })
+    elements.push({ tag: 'a', text: match[1] ?? match[2] ?? '链接', href: match[2] ?? '' })
+    lastIndex = index + match[0].length
+  }
+  if (lastIndex < text.length) elements.push({ tag: 'text', text: text.slice(lastIndex) })
+  if (elements.length === 0) elements.push({ tag: 'text', text })
+  return elements.filter(element => element.tag === 'a' || element.text.length > 0)
 }
 
 function markdownToAppendOperations(markdown: string): AppendOperation[] {

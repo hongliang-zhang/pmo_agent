@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { FeishuOpenApiClient } from '../src/feishu/openapi.js'
+import { FeishuOpenApiClient, markdownToFeishuPost } from '../src/feishu/openapi.js'
 
 describe('Feishu OpenAPI client', () => {
   it('uses Contacts API to map emails to open_id', async () => {
@@ -29,6 +29,43 @@ describe('Feishu OpenAPI client', () => {
 
     const client = new FeishuOpenApiClient({ tenantAccessToken: 'tenant-token', fetch: fetch as unknown as typeof globalThis.fetch })
     await expect(client.sendTextMessage({ receiveIdType: 'open_id', receiveId: 'ou_hl', text: '日报已生成' })).resolves.toMatchObject({ data: { message_id: 'om_1' } })
+  })
+
+  it('sends markdown-like PMO replies as Feishu post messages', async () => {
+    const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(url)).toContain('/im/v1/messages?receive_id_type=open_id')
+      const body = JSON.parse(String(init?.body))
+      expect(body).toMatchObject({ receive_id: 'ou_hl', msg_type: 'post' })
+      const content = JSON.parse(body.content)
+      expect(content.post.zh_cn.title).toBe('PMO Agent')
+      expect(content.post.zh_cn.content[0]).toEqual([{ tag: 'text', text: '实时数据核查概览' }])
+      expect(content.post.zh_cn.content[1]).toEqual([{ tag: 'text', text: '• 飞书项目：已获取 192 条活跃需求。' }])
+      expect(content.post.zh_cn.content[2]).toEqual([
+        { tag: 'text', text: '• ' },
+        { tag: 'a', text: 'Open WebUI', href: 'https://pmo.hongliang.app' },
+      ])
+      expect(body.content).not.toContain('###')
+      expect(body.content).not.toContain('**')
+      return jsonResponse({ code: 0, data: { message_id: 'om_post' } })
+    })
+
+    const client = new FeishuOpenApiClient({ tenantAccessToken: 'tenant-token', fetch: fetch as unknown as typeof globalThis.fetch })
+    await expect(client.sendPostMessage({
+      receiveIdType: 'open_id',
+      receiveId: 'ou_hl',
+      markdown: [
+        '### 实时数据核查概览',
+        '- **飞书项目**：已获取 192 条活跃需求。',
+        '- [Open WebUI](https://pmo.hongliang.app)',
+      ].join('\n'),
+    })).resolves.toMatchObject({ data: { message_id: 'om_post' } })
+  })
+
+  it('converts markdown links to Feishu post link elements', () => {
+    expect(markdownToFeishuPost('- [Open WebUI](https://pmo.hongliang.app)').post.zh_cn.content[0]).toEqual([
+      { tag: 'text', text: '• ' },
+      { tag: 'a', text: 'Open WebUI', href: 'https://pmo.hongliang.app' },
+    ])
   })
 
   it('creates a docx document and appends markdown tables as native table blocks', async () => {

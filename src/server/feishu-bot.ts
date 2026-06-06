@@ -31,6 +31,7 @@ export interface FeishuBotHandlerOptions {
   publicBaseUrl?: string
   reportsDir?: string
   sendText?: (input: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; text: string }) => Promise<unknown>
+  sendPost?: (input: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; title?: string; markdown: string }) => Promise<unknown>
   runDaily?: (input: { date: string; reportsDir: string }) => Promise<PmoRunRecord>
   answerQuestion?: (input: { latestMessage: string; messages: Array<{ role: 'user' | 'assistant'; content: string }> }) => Promise<PmoAgentAnswer>
 }
@@ -56,7 +57,12 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
   const botOpenId = options.botOpenId ?? process.env.PMO_FEISHU_BOT_OPEN_ID
   const botUserId = options.botUserId ?? process.env.PMO_FEISHU_BOT_USER_ID
   const ackText = options.ackText ?? process.env.PMO_FEISHU_BOT_ACK_TEXT ?? '👀'
-  const sendText = options.sendText ?? (async input => new FeishuOpenApiClient().sendTextMessage(input))
+  const feishuClient = new FeishuOpenApiClient()
+  const sendText = options.sendText ?? (async input => feishuClient.sendTextMessage(input))
+  const sendPost = options.sendPost
+    ?? (options.sendText
+      ? (async input => options.sendText?.({ receiveIdType: input.receiveIdType, receiveId: input.receiveId, text: markdownToPlainText(input.markdown) }))
+      : (async input => feishuClient.sendPostMessage(input)))
   const answerQuestion = options.answerQuestion ?? answerPmoQuestionForOpenWebUi
   const conversationByThread = new Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>()
   const runDaily = options.runDaily ?? (async input => runDailyAgentCycle({
@@ -130,7 +136,7 @@ export function createFeishuBotHandler(options: FeishuBotHandlerOptions = {}): {
         answerQuestion,
         conversationByThread,
       })
-      await sendText({ ...target, text: reply })
+      await sendFormattedReply({ sendPost, sendText, target, markdown: reply })
       await appendBotAuditEvent(reportsDir, { event, decision: 'replied', command: summarizeCommand(text) })
       return { status: 200, body: { success: true } }
     },
@@ -325,6 +331,30 @@ function replyTarget(event: { sender: FeishuBotSender; chatId: string; chatType:
 function feishuConversationKey(event: { sender: FeishuBotSender; chatId: string; chatType: string }): string {
   const sender = event.sender.openId ?? event.sender.userId ?? event.sender.unionId ?? 'unknown'
   return `${event.chatType}:${event.chatId}:${sender}`
+}
+
+async function sendFormattedReply(input: {
+  sendPost: (message: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; title?: string; markdown: string }) => Promise<unknown>
+  sendText: (message: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string; text: string }) => Promise<unknown>
+  target: { receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'chat_id'; receiveId: string }
+  markdown: string
+}): Promise<void> {
+  try {
+    await input.sendPost({ ...input.target, title: 'PMO Agent', markdown: input.markdown })
+  } catch (error) {
+    process.stderr.write(`[pmo-feishu] post_reply_failed ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n`)
+    await input.sendText({ ...input.target, text: markdownToPlainText(input.markdown) })
+  }
+}
+
+function markdownToPlainText(markdown: string): string {
+  return markdown
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*]\s+/gm, '• ')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1：$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
 }
 
 function verifyFeishuSignature(input: {
